@@ -156,9 +156,9 @@ void DiscordRPC_ThreadMain(void)
         svcSleepThread(10LL * 1000 * 1000 * 1000);
         if(g_shouldStop) break;
 
-        u8 key[32], iv[16]={0}, hash[32], auth[48];
+        u8 key[32], iv[16]={0}, hash[32], auth[64]; /* 64 = max padded size for 48 */
         u32 alen;
-        char hin[256], ah[97], se[64], de[64], body[512], resp[512], ok[8];
+        char hin[256], ah[129], se[64], de[64], body[512], resp[512], ok[8];
         SHA256_CTX sha;
 
         for(u32 i = 0; i < 32; i++)
@@ -193,16 +193,22 @@ void DiscordRPC_ThreadMain(void)
         sha256_update(&sha, (const u8*)hin, strlen(hin));
         sha256_final(&sha, hash);
 
-        memset(auth,0,sizeof(auth));
-        auth[0]=(u8)(g_counter>>56); auth[1]=(u8)(g_counter>>48);
-        auth[2]=(u8)(g_counter>>40); auth[3]=(u8)(g_counter>>32);
-        auth[4]=(u8)(g_counter>>24); auth[5]=(u8)(g_counter>>16);
-        auth[6]=(u8)(g_counter>>8);  auth[7]=(u8)g_counter;
+        memset(auth, 0, sizeof(auth));
+        auth[0]=(u8)(g_counter>>56); 
+        auth[1]=(u8)(g_counter>>48);
+        auth[2]=(u8)(g_counter>>40); 
+        auth[3]=(u8)(g_counter>>32);
+        auth[4]=(u8)(g_counter>>24); 
+        auth[5]=(u8)(g_counter>>16);
+        auth[6]=(u8)(g_counter>>8);  
+        auth[7]=(u8)g_counter;
         memcpy(&auth[8], hash, 32);
-        memset(&auth[40], 0x08, 8);
+        // No manual padding: let discord_aes256_cbc_encrypt handle PKCS7.
+        // Input = 40 bytes (counter + hash), output = 48 bytes (3 blocks)
 
-        discord_aes256_cbc_encrypt(key, iv, auth, 48, auth, &alen);
-        bytes_to_hex(auth, 48, ah);
+        discord_aes256_cbc_encrypt(key, iv, auth, 40, auth, &alen);
+        bytes_to_hex(auth, alen, ah);
+        DiscordLog_Printf("[AUTH] counter=%llu alen=%u ah_len=%d\n", g_counter, alen, (int)strlen(ah));
 
         snprintf(body, sizeof(body),
             "uuid=%s&counter=%llu&auth_hex=%s&state=%s&details=%s&activity_type=0",

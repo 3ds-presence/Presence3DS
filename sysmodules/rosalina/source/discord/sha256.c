@@ -61,10 +61,9 @@ static const u32 k[SHA256_BLOCK_SIZE] = {
 static void sha256_transform(SHA256_CTX *ctx, const u8 data[SHA256_BLOCK_SIZE])
 {
     u32 a, b, c, d, e, f, g, h, i, j, t1, t2, m[SHA256_BLOCK_SIZE];
-    const u32 *block = (const u32 *)data;
 
     for(i = 0, j = 0; i < 16; i++, j += 4)
-        m[i] = (block[j] << 24) | (block[j + 1] << 16) | (block[j + 2] << 8) | (block[j + 3]);
+        m[i] = ((u32)data[j] << 24) | ((u32)data[j + 1] << 16) | ((u32)data[j + 2] << 8) | (u32)data[j + 3];
     for(; i < 64; i++)
         m[i] = SIG1(m[i - 2]) + m[i - 7] + SIG0(m[i - 15]) + m[i - 16];
 
