@@ -63,7 +63,7 @@ static bool parse_line(const char *line, const char *key, char *dst, u32 maxlen)
 Result DiscordConfig_Load(void)
 {
     Result res;
-    IFile file;
+    Handle fileHandle;
     char buf[256];
     u64 total;
 
@@ -74,23 +74,37 @@ Result DiscordConfig_Load(void)
     g_server_port = 0;
     g_config_loaded = false;
 
-    // Open the config file from SD
-    res = IFile_Open(&file, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""),
-                     fsMakePath(PATH_ASCII, DISCORD_CONFIG_PATH),
-                     FS_OPEN_READ);
-    if(R_FAILED(res))
-        return res;
-
-    // Read the whole file
-    res = IFile_Read(&file, &total, buf, sizeof(buf) - 1);
+    // Open the file directly (pattern from file_loader.c / plugin system)
+    res = FSUSER_OpenFileDirectly(&fileHandle, ARCHIVE_SDMC,
+                                  fsMakePath(PATH_EMPTY, ""),
+                                  fsMakePath(PATH_ASCII, DISCORD_CONFIG_PATH),
+                                  FS_OPEN_READ, 0);
     if(R_FAILED(res))
     {
-        IFile_Close(&file);
+        DiscordLog_Printf("[ERR] Can't open " DISCORD_CONFIG_PATH " (0x%08lx)\n", (u32)res);
+        DiscordLog_Printf("[INFO] Create file on SD with UUID=..., AES_KEY=..., etc\n");
         return res;
     }
-    buf[total] = '\0';
 
-    IFile_Close(&file);
+    DiscordLog_Printf("[INFO] File opened successfully\n");
+
+    // Read the whole file
+    {
+        u32 read;
+        res = FSFILE_Read(fileHandle, &read, 0, buf, sizeof(buf) - 1);
+        if(R_FAILED(res))
+        {
+            DiscordLog_Printf("[ERR] Read failed (0x%08lx)\n", (u32)res);
+            FSFILE_Close(fileHandle);
+            return res;
+        }
+        buf[read] = '\0';
+        total = read;
+    }
+
+    FSFILE_Close(fileHandle);
+
+    DiscordLog_Printf("[INFO] Read %llu bytes\n", total);
 
     // Parse lines
     char *line = buf;
@@ -117,16 +131,54 @@ Result DiscordConfig_Load(void)
                 has_key = true;
             else if(parse_line(line, "SERVER_IP", tmp_str, sizeof(tmp_str)))
             {
-                // Convert IP string to u32 (network byte order)
-                g_server_ip = inet_addr(tmp_str);
-                if(g_server_ip != 0 && g_server_ip != 0xFFFFFFFF)
+                // Manual IP parsing (inet_addr may not work properly on 3DS)
+                u8 ip_bytes[4] = {0};
+                int octet = 0, val = 0;
+                bool ip_ok = true;
+                for(const char *p = tmp_str; *p && octet < 4; p++)
+                {
+                    if(*p == '.')
+                    {
+                        ip_bytes[octet] = (u8)val;
+                        val = 0;
+                        octet++;
+                    }
+                    else if(*p >= '0' && *p <= '9')
+                    {
+                        val = val * 10 + (*p - '0');
+                        if(val > 255) { ip_ok = false; break; }
+                    }
+                    else
+                    {
+                        DiscordLog_Printf("[DBG] Bad char in IP: '%c' (0x%02x)\n", *p, (u8)*p);
+                        ip_ok = false;
+                        break;
+                    }
+                }
+                if(ip_ok && octet == 3)
+                {
+                    ip_bytes[3] = (u8)val;
+                    g_server_ip = (u32)ip_bytes[0] | ((u32)ip_bytes[1] << 8) |
+                                  ((u32)ip_bytes[2] << 16) | ((u32)ip_bytes[3] << 24);
                     has_ip = true;
+                }
+                else
+                {
+                    DiscordLog_Printf("[DBG] IP parse fail: ip_ok=%d octet=%d val=%d\n", ip_ok, octet, val);
+                }
             }
             else if(parse_line(line, "SERVER_PORT", tmp_str, sizeof(tmp_str)))
             {
-                // Convert port string to u16
-                long port = strtol(tmp_str, NULL, 10);
-                if(port > 0 && port <= 65535)
+                // Manual port parsing
+                u32 port = 0;
+                bool port_ok = true;
+                for(const char *p = tmp_str; *p; p++)
+                {
+                    if(*p >= '0' && *p <= '9')
+                        port = port * 10 + (*p - '0');
+                    else { port_ok = false; break; }
+                }
+                if(port_ok && port > 0 && port <= 65535)
                 {
                     g_server_port = (u16)port;
                     has_port = true;
@@ -149,7 +201,7 @@ Result DiscordConfig_Load(void)
     }
     else
     {
-        DiscordLog_Printf("[WARN] Config incomplete: uuid=%d key=%d ip=%d port=%d\n",
+        DiscordLog_Printf("[WARN] Config field missing: uuid=%d key=%d ip=%d port=%d\n",
             has_uuid, has_key, has_ip, has_port);
         return -1;
     }

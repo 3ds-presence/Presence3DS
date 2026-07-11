@@ -269,17 +269,9 @@ int main(void)
     ScreenFiltersMenu_LoadConfig();
     SysConfigMenu_LoadConfig();
 
-    // Initialize Discord RPC
+    // Initialize Discord RPC (config loaded on-demand when starting)
     DiscordLog_Init();
-    Result discordCfgRes = DiscordConfig_Load();
-    if(R_SUCCEEDED(discordCfgRes))
-    {
-        DiscordLog_Printf("[INIT] Config loaded from /luma/discord_rpc.txt\n");
-    }
-    else
-    {
-        DiscordLog_Printf("[INIT] Config not found (/luma/discord_rpc.txt), use Reload Config in menu\n");
-    }
+    DiscordLog_Printf("[INIT] Discord RPC initialized (load config from menu or Start)\n");
 
     MyThread *menuThread = menuCreateThread();
     MyThread *taskRunnerThread = taskRunnerCreateThread();

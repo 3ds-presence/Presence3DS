@@ -483,11 +483,22 @@ cleanup:
 
 void DiscordRPC_Start(void)
 {
-    if(g_discord_state == DISCORD_STOPPED && !g_shouldStart)
+    // Load config if not yet loaded
+    if(!g_config_loaded)
+    {
+        DiscordLog_Printf("[CMD] Loading config before start...\n");
+        DiscordConfig_Load();
+    }
+
+    if(g_discord_state == DISCORD_STOPPED && !g_shouldStart && g_config_loaded)
     {
         g_shouldStart = true;
         svcSignalEvent(g_controlEvent);
         DiscordLog_Printf("[CMD] Start requested\n");
+    }
+    else if(!g_config_loaded)
+    {
+        DiscordLog_Printf("[CMD] Cannot start: config not loaded\n");
     }
 }
 
