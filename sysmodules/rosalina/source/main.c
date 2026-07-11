@@ -269,15 +269,15 @@ int main(void)
     ScreenFiltersMenu_LoadConfig();
     SysConfigMenu_LoadConfig();
 
-    // Initialize Discord RPC (config loaded on-demand when starting)
+    // Initialize Discord RPC (all operations run on TaskRunner, no secondary threads)
     DiscordLog_Init();
-    DiscordLog_Printf("[INIT] Discord RPC initialized (load config from menu or Start)\n");
+    DiscordRPC_Init();
+    DiscordLog_Printf("[INIT] Discord RPC ready\n");
 
     MyThread *menuThread = menuCreateThread();
     MyThread *taskRunnerThread = taskRunnerCreateThread();
     MyThread *errDispThread = errDispCreateThread();
     bootdiagCreateThread();
-    DiscordRPC_CreateThread();
 
     if (R_FAILED(ServiceManager_Run(services, notifications, NULL)))
         svcBreak(USERBREAK_PANIC);

@@ -28,11 +28,9 @@
 
 #include <3ds/types.h>
 #include <3ds/synchronization.h>
-#include "MyThread.h"
 
 typedef enum {
     DISCORD_STOPPED = 0,
-    DISCORD_STARTING,
     DISCORD_LOGIN,
     DISCORD_VERIFY,
     DISCORD_ACTIVE,
@@ -44,7 +42,5 @@ extern char g_discord_status[64];
 extern LightLock g_discord_lock;
 
 void DiscordRPC_Init(void);
-MyThread *DiscordRPC_CreateThread(void);
 void DiscordRPC_Start(void);
 void DiscordRPC_Stop(void);
-void DiscordRPC_ThreadMain(void);

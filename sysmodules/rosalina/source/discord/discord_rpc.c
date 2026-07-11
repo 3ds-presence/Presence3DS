@@ -1,33 +1,12 @@
 /*
- *   This file is part of Luma3DS
- *   Copyright (C) 2016-2021 Aurora Wright, TuxSH
- *
- *   This program is free software: you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation, either version 3 of the License, or
- *   (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- *   Additional Terms 7.b and 7.c of GPLv3 apply to this file:
- *       * Requiring preservation of specified reasonable legal notices or
- *         author attributions in that material or in the Appropriate Legal
- *         Notices displayed by works containing it.
- *       * Prohibiting misrepresentation of the origin of that material,
- *         or requiring that modified versions of such material be marked in
- *         reasonable ways as different from the original version.
+ *   All RPC operations run in their own MyThread (like InputRedirection).
+ *   miniSocInit/Exit, sockets, crypto — all in the same thread.
  */
 
 #include <string.h>
 #include <stdio.h>
-#include <3ds.h>
 #include <stdlib.h>
+#include <3ds.h>
 #include "minisoc.h"
 #include "menu.h"
 #include "discord/discord_rpc.h"
@@ -42,489 +21,281 @@ char g_discord_status[64] = "Stopped";
 LightLock g_discord_lock;
 
 static MyThread g_rpcThread;
-static u8 CTR_ALIGN(8) g_rpcThreadStack[0x2000];
-static Handle g_controlEvent;
+static u8 CTR_ALIGN(8) g_rpcThreadStack[0x4000];
 static volatile bool g_shouldStop;
-static volatile bool g_shouldStart;
 static u64 g_counter;
 static char g_ip_str[16];
 
-// Helper: parse key=value from HTTP response
-static bool parse_response_field(const char *response, const char *field, char *value, u32 maxlen)
+// Event for signaling thread startup completion
+static Handle g_rpcStartedEvent;
+
+static bool parse_field(const char *r, const char *f, char *v, u32 m)
 {
-    const char *p = strstr(response, field);
-    if(!p)
-        return false;
-
-    p += strlen(field);
-    if(*p != '=')
-        return false;
-
+    const char *p = strstr(r, f);
+    if(!p) return false;
+    p += strlen(f);
+    if(*p != '=') return false;
     p++;
     u32 i;
-    for(i = 0; i < maxlen - 1 && p[i] && p[i] != '&' && p[i] != '\r' && p[i] != '\n'; i++)
-        value[i] = p[i];
-    value[i] = '\0';
-
+    for(i = 0; i < m-1 && p[i] && p[i] != '&' && p[i] != '\r' && p[i] != '\n'; i++) v[i] = p[i];
+    v[i] = '\0';
     return i > 0;
 }
 
-// Helper: URL encode a string (simple version)
-static int url_encode(char *dst, u32 dst_size, const char *src)
+static void set_state(DiscordState s, const char *st)
 {
-    u32 di = 0;
-    u32 si;
-    static const char hex_chars[] = "0123456789ABCDEF";
+    LightLock_Lock(&g_discord_lock);
+    g_discord_state = s;
+    strncpy(g_discord_status, st, sizeof(g_discord_status)-1);
+    g_discord_status[sizeof(g_discord_status)-1] = '\0';
+    LightLock_Unlock(&g_discord_lock);
+}
 
-    for(si = 0; src[si] && di < dst_size - 3; si++)
+void DiscordRPC_ThreadMain(void)
+{
+    DiscordLog_Printf("[THREAD] Started\n");
+
+    // Initialize network INSIDE the thread (like InputRedirection does)
+    Result res = miniSocInit();
+    if(R_FAILED(res))
     {
-        u8 c = (u8)src[si];
-        if((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-           c == '-' || c == '_' || c == '.' || c == '~')
+        DiscordLog_Printf("[ERR] miniSocInit failed (0x%08lx)\n", (u32)res);
+        set_state(DISCORD_ERROR, "Network init failed");
+        svcSignalEvent(g_rpcStartedEvent);
+        return;
+    }
+
+    // Retry loop for socket creation (like InputRedirection)
+    u32 tries = 15;
+    int sock = socSocket(AF_INET, SOCK_STREAM, 0);
+    while(sock == -1 && --tries > 0)
+    {
+        svcSleepThread(100 * 1000 * 1000LL);
+        sock = socSocket(AF_INET, SOCK_STREAM, 0);
+    }
+
+    if(sock < 0)
+    {
+        DiscordLog_Printf("[ERR] Socket creation failed\n");
+        set_state(DISCORD_ERROR, "Socket failed");
+        miniSocExit();
+        svcSignalEvent(g_rpcStartedEvent);
+        return;
+    }
+    socClose(sock);
+
+    // Signal that we're ready (like InputRedirection)
+    svcSignalEvent(g_rpcStartedEvent);
+
+    DiscordLog_Printf("[THREAD] Network OK, starting login...\n");
+
+    // --- LOGIN ---
+    {
+        char body[128], resp[512], nonce[32];
+        snprintf(body, sizeof(body), "uuid=%s", g_uuid);
+        set_state(DISCORD_LOGIN, "Logging in...");
+
+        int r = discord_http_post(g_ip_str, g_server_port, "/api/login",
+                                   body, resp, sizeof(resp), 0);
+        if(g_shouldStop) goto stop;
+
+        if(r < 0 || !parse_field(resp, "nonce", nonce, sizeof(nonce)))
         {
-            dst[di++] = c;
+            DiscordLog_Printf("[ERR] Login failed\n");
+            set_state(DISCORD_ERROR, "Login failed");
+            goto stop;
         }
-        else if(c == ' ')
+        g_counter = strtoull(nonce, NULL, 10);
+        DiscordLog_Printf("[AUTH] Nonce=%llu\n", g_counter);
+    }
+
+    // --- VERIFY ---
+    {
+        u8 key[32], iv[16]={0}, block[16];
+        u32 clen;
+        char hex[33], body[256], resp[512], ok[8];
+
+        for(u32 i = 0; i < 32; i++)
         {
-            dst[di++] = '+';
+            char h[3] = {g_aes_key_hex[i*2], g_aes_key_hex[i*2+1], 0};
+            key[i] = (u8)strtoul(h, NULL, 16);
+        }
+
+        memset(block, 0, 16);
+        block[7]=(u8)g_counter; block[6]=(u8)(g_counter>>8);
+        block[5]=(u8)(g_counter>>16); block[4]=(u8)(g_counter>>24);
+        block[3]=(u8)(g_counter>>32); block[2]=(u8)(g_counter>>40);
+        block[1]=(u8)(g_counter>>48); block[0]=(u8)(g_counter>>56);
+        memset(&block[8], 0x08, 8);
+
+        discord_aes256_cbc_encrypt(key, iv, block, 16, block, &clen);
+        bytes_to_hex(block, 16, hex);
+        snprintf(body, sizeof(body), "uuid=%s&cipher_hex=%s", g_uuid, hex);
+
+        int r = discord_http_post(g_ip_str, g_server_port, "/api/login/verify",
+                                   body, resp, sizeof(resp), 0);
+        if(g_shouldStop) goto stop;
+
+        if(r == 0 && parse_field(resp, "success", ok, sizeof(ok)) && strcmp(ok, "true") == 0)
+        {
+            g_counter++;
+            DiscordLog_Printf("[ACTIVE] Connected! counter=%llu\n", g_counter);
+            set_state(DISCORD_ACTIVE, "Connected to Discord");
         }
         else
         {
-            dst[di++] = '%';
-            dst[di++] = hex_chars[c >> 4];
-            dst[di++] = hex_chars[c & 0x0f];
+            DiscordLog_Printf("[ERR] Verify failed\n");
+            set_state(DISCORD_ERROR, "Verify failed");
+            goto stop;
         }
     }
-    dst[di] = '\0';
-    return di;
+
+    // --- ACTIVITY LOOP ---
+    while(!g_shouldStop)
+    {
+        svcSleepThread(10LL * 1000 * 1000 * 1000);
+        if(g_shouldStop) break;
+
+        u8 key[32], iv[16]={0}, hash[32], auth[48];
+        u32 alen;
+        char hin[256], ah[97], se[64], de[64], body[512], resp[512], ok[8];
+        SHA256_CTX sha;
+
+        for(u32 i = 0; i < 32; i++)
+        {
+            char h[3] = {g_aes_key_hex[i*2], g_aes_key_hex[i*2+1], 0};
+            key[i] = (u8)strtoul(h, NULL, 16);
+        }
+
+        static const char *hstr = "Playing on 3DS";
+        static const char *dstr = "Luma3DS Discord RPC";
+
+        // URL encode
+        u32 si, di = 0;
+        for(si = 0; hstr[si] && di < sizeof(se)-3; si++) {
+            u8 c = (u8)hstr[si];
+            if(c == ' ') se[di++] = '+';
+            else if((c>='0'&&c<='9')||(c>='A'&&c<='Z')||(c>='a'&&c<='z')||c=='-'||c=='_'||c=='.'||c=='~') se[di++]=c;
+            else { se[di++]='%'; se[di++]= "0123456789ABCDEF"[c>>4]; se[di++]="0123456789ABCDEF"[c&0xf]; }
+        }
+        se[di]='\0';
+        di=0;
+        for(si = 0; dstr[si] && di < sizeof(de)-3; si++) {
+            u8 c = (u8)dstr[si];
+            if(c == ' ') de[di++] = '+';
+            else if((c>='0'&&c<='9')||(c>='A'&&c<='Z')||(c>='a'&&c<='z')||c=='-'||c=='_'||c=='.'||c=='~') de[di++]=c;
+            else { de[di++]='%'; de[di++]="0123456789ABCDEF"[c>>4]; de[di++]="0123456789ABCDEF"[c&0xf]; }
+        }
+        de[di]='\0';
+
+        snprintf(hin, sizeof(hin), "%s%s%d", hstr, dstr, 0);
+        sha256_init(&sha);
+        sha256_update(&sha, (const u8*)hin, strlen(hin));
+        sha256_final(&sha, hash);
+
+        memset(auth,0,sizeof(auth));
+        auth[0]=(u8)(g_counter>>56); auth[1]=(u8)(g_counter>>48);
+        auth[2]=(u8)(g_counter>>40); auth[3]=(u8)(g_counter>>32);
+        auth[4]=(u8)(g_counter>>24); auth[5]=(u8)(g_counter>>16);
+        auth[6]=(u8)(g_counter>>8);  auth[7]=(u8)g_counter;
+        memcpy(&auth[8], hash, 32);
+        memset(&auth[40], 0x08, 8);
+
+        discord_aes256_cbc_encrypt(key, iv, auth, 48, auth, &alen);
+        bytes_to_hex(auth, 48, ah);
+
+        snprintf(body, sizeof(body),
+            "uuid=%s&counter=%llu&auth_hex=%s&state=%s&details=%s&activity_type=0",
+            g_uuid, g_counter, ah, se, de);
+
+        int r = discord_http_post(g_ip_str, g_server_port, "/api/activity",
+                                   body, resp, sizeof(resp), 0);
+        if(g_shouldStop) break;
+
+        if(r == 0 && parse_field(resp, "success", ok, sizeof(ok)) && strcmp(ok, "true") == 0)
+        {
+            g_counter++;
+            DiscordLog_Printf("[ACTIVE] OK counter=%llu\n", g_counter);
+        }
+        else
+        {
+            char err[64];
+            if(parse_field(resp, "error", err, sizeof(err)))
+            {
+                DiscordLog_Printf("[WARN] %s\n", err);
+                if(strstr(err, "session_expired"))
+                {
+                    set_state(DISCORD_LOGIN, "Session expired");
+                    DiscordLog_Printf("[WARN] Session expired\n");
+                    break;
+                }
+            }
+        }
+    }
+
+stop:
+    set_state(DISCORD_STOPPED, "Stopped");
+    miniSocExit();
+    DiscordLog_Printf("[THREAD] Exited\n");
 }
 
-// Set state + status in a thread-safe way
-static void set_state(DiscordState state, const char *status)
+void DiscordRPC_Start(void)
 {
-    LightLock_Lock(&g_discord_lock);
-    g_discord_state = state;
-    strncpy(g_discord_status, status, sizeof(g_discord_status) - 1);
-    g_discord_status[sizeof(g_discord_status) - 1] = '\0';
-    LightLock_Unlock(&g_discord_lock);
+    if(!g_config_loaded)
+    {
+        DiscordLog_Printf("[CMD] Loading config...\n");
+        DiscordConfig_Load();
+    }
+    if(g_discord_state != DISCORD_STOPPED || !g_config_loaded)
+    {
+        if(!g_config_loaded) DiscordLog_Printf("[CMD] No config\n");
+        return;
+    }
+
+    // Prepare IP string
+    u8 *ip = (u8 *)&g_server_ip;
+    snprintf(g_ip_str, sizeof(g_ip_str), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+
+    g_shouldStop = false;
+
+    // Create startup event (like InputRedirection)
+    if(R_FAILED(svcCreateEvent(&g_rpcStartedEvent, RESET_STICKY)))
+    {
+        DiscordLog_Printf("[CMD] Event creation failed\n");
+        return;
+    }
+
+    DiscordLog_Printf("[CMD] Creating thread (prio 0x20)...\n");
+    if(R_FAILED(MyThread_Create(&g_rpcThread, DiscordRPC_ThreadMain,
+                                g_rpcThreadStack, sizeof(g_rpcThreadStack),
+                                0x20, CORE_SYSTEM)))
+    {
+        DiscordLog_Printf("[CMD] Thread creation failed\n");
+        svcCloseHandle(g_rpcStartedEvent);
+        return;
+    }
+
+    // Wait for thread to initialize (like InputRedirection, 10s timeout)
+    DiscordLog_Printf("[CMD] Waiting for thread init...\n");
+    svcWaitSynchronization(g_rpcStartedEvent, 10LL * 1000 * 1000 * 1000);
+    svcCloseHandle(g_rpcStartedEvent);
+    DiscordLog_Printf("[CMD] Thread initialized\n");
+}
+
+void DiscordRPC_Stop(void)
+{
+    DiscordLog_Printf("[CMD] Stopping...\n");
+    g_shouldStop = true;
+    MyThread_Join(&g_rpcThread, -1LL);
+    set_state(DISCORD_STOPPED, "Stopped");
+    DiscordLog_Printf("[CMD] Stopped\n");
 }
 
 void DiscordRPC_Init(void)
 {
     LightLock_Init(&g_discord_lock);
-    svcCreateEvent(&g_controlEvent, RESET_STICKY);
     g_shouldStop = false;
-    g_shouldStart = false;
     g_counter = 0;
     g_ip_str[0] = '\0';
-
-    // Convert IP to string
-    if(g_config_loaded)
-    {
-        u8 *ip = (u8 *)&g_server_ip;
-        snprintf(g_ip_str, sizeof(g_ip_str), "%u.%u.%u.%u",
-                 ip[0], ip[1], ip[2], ip[3]);
-    }
-
-    DiscordLog_Printf("[INIT] Discord RPC initialized\n");
-}
-
-// Thread function
-void DiscordRPC_ThreadMain(void)
-{
-    DiscordLog_Printf("[THREAD] Started\n");
-
-    while(!g_shouldStop)
-    {
-        // Wait for start signal or check periodically
-        if(g_discord_state == DISCORD_STOPPED)
-        {
-            if(g_shouldStart && g_config_loaded)
-            {
-                set_state(DISCORD_STARTING, "Starting...");
-                g_shouldStart = false;
-            }
-            else
-            {
-                // Sleep 500ms and loop
-                svcWaitSynchronization(g_controlEvent, 500 * 1000 * 1000LL);
-                svcClearEvent(g_controlEvent);
-                continue;
-            }
-        }
-
-        if(g_shouldStop)
-            break;
-
-        // --- STARTING state: init miniSoc ---
-        if(g_discord_state == DISCORD_STARTING)
-        {
-            DiscordLog_Printf("[CONNECT] Initializing network...\n");
-
-            if(R_FAILED(miniSocInit()))
-            {
-                DiscordLog_Printf("[ERR] miniSocInit failed\n");
-                set_state(DISCORD_ERROR, "Network init failed");
-                goto error_wait;
-            }
-
-            DiscordLog_Printf("[CONNECT] Network OK, sending /login...\n");
-            set_state(DISCORD_LOGIN, "Logging in...");
-        }
-
-        // --- LOGIN state: POST /login ---
-        if(g_discord_state == DISCORD_LOGIN)
-        {
-            char body[128];
-            char response[512];
-            char nonce_str[32];
-            int res;
-
-            snprintf(body, sizeof(body), "uuid=%s", g_uuid);
-
-            res = discord_http_post(g_ip_str, g_server_port, "/api/login",
-                                    body, response, sizeof(response), g_controlEvent);
-
-            if(g_shouldStop)
-                goto cleanup;
-
-            if(res < 0)
-            {
-                DiscordLog_Printf("[ERR] /login HTTP failed\n");
-                set_state(DISCORD_ERROR, "Login HTTP failed");
-                miniSocExit();
-                goto error_wait;
-            }
-
-            // Parse nonce from response
-            if(!parse_response_field(response, "nonce", nonce_str, sizeof(nonce_str)))
-            {
-                // Check for error
-                char err_str[64];
-                if(parse_response_field(response, "error", err_str, sizeof(err_str)))
-                {
-                    DiscordLog_Printf("[ERR] /login error: %s\n", err_str);
-                    set_state(DISCORD_ERROR, "Server rejected");
-                }
-                else
-                {
-                    DiscordLog_Printf("[ERR] Cannot parse /login response\n");
-                    set_state(DISCORD_ERROR, "Parse error");
-                }
-                miniSocExit();
-                goto error_wait;
-            }
-
-            // Convert nonce to u64
-            g_counter = strtoull(nonce_str, NULL, 10);
-            DiscordLog_Printf("[AUTH] Got nonce: %llu\n", g_counter);
-            set_state(DISCORD_VERIFY, "Verifying...");
-        }
-
-        // --- VERIFY state: POST /login/verify ---
-        if(g_discord_state == DISCORD_VERIFY)
-        {
-            u8 aes_key[32];
-            u8 iv[16] = {0};
-            u8 block[16];
-            u32 cipher_len;
-            char cipher_hex[33]; // 32 hex chars + null
-            char body[256];
-            char response[512];
-            int res;
-
-            // Convert hex key to binary
-            u32 key_hex_len = strlen(g_aes_key_hex);
-            if(key_hex_len != 64)
-            {
-                DiscordLog_Printf("[ERR] Invalid AES key length: %u\n", key_hex_len);
-                set_state(DISCORD_ERROR, "Invalid key");
-                miniSocExit();
-                goto error_wait;
-            }
-
-            for(u32 i = 0; i < 32; i++)
-            {
-                char hex_byte[3] = {g_aes_key_hex[i * 2], g_aes_key_hex[i * 2 + 1], 0};
-                aes_key[i] = (u8)strtoul(hex_byte, NULL, 16);
-            }
-
-            // Build AES block: nonce as 8 bytes big-endian + PKCS7 padding (8 bytes of 0x08)
-            memset(block, 0, 16);
-            block[0] = (u8)(g_counter >> 56);
-            block[1] = (u8)(g_counter >> 48);
-            block[2] = (u8)(g_counter >> 40);
-            block[3] = (u8)(g_counter >> 32);
-            block[4] = (u8)(g_counter >> 24);
-            block[5] = (u8)(g_counter >> 16);
-            block[6] = (u8)(g_counter >> 8);
-            block[7] = (u8)(g_counter);
-            memset(&block[8], 0x08, 8); // PKCS7 padding
-
-            // Encrypt
-            discord_aes256_cbc_encrypt(aes_key, iv, block, 16, block, &cipher_len);
-
-            // Convert to hex
-            bytes_to_hex(block, 16, cipher_hex);
-            DiscordLog_Printf("[AUTH] cipher_hex=%s\n", cipher_hex);
-
-            // Send /login/verify
-            snprintf(body, sizeof(body), "uuid=%s&cipher_hex=%s", g_uuid, cipher_hex);
-
-            res = discord_http_post(g_ip_str, g_server_port, "/api/login/verify",
-                                    body, response, sizeof(response), g_controlEvent);
-
-            if(g_shouldStop)
-                goto cleanup;
-
-            if(res < 0)
-            {
-                DiscordLog_Printf("[ERR] /login/verify HTTP failed\n");
-                set_state(DISCORD_ERROR, "Verify HTTP failed");
-                miniSocExit();
-                goto error_wait;
-            }
-
-            // Check for success
-            char success_str[8];
-            if(parse_response_field(response, "success", success_str, sizeof(success_str)) &&
-               strcmp(success_str, "true") == 0)
-            {
-                DiscordLog_Printf("[AUTH] Login verified successfully\n");
-                // counter for first activity = nonce + 1
-                g_counter++;
-                DiscordLog_Printf("[ACTIVE] Starting activity loop, counter=%llu\n", g_counter);
-                set_state(DISCORD_ACTIVE, "Connected to Discord");
-                DiscordLog_Printf("[ACTIVE] Connected!\n");
-            }
-            else
-            {
-                char err_str[64];
-                if(parse_response_field(response, "error", err_str, sizeof(err_str)))
-                {
-                    DiscordLog_Printf("[ERR] /login/verify error: %s\n", err_str);
-                    set_state(DISCORD_ERROR, "Auth failed");
-                }
-                else
-                {
-                    DiscordLog_Printf("[ERR] Unexpected verify response\n");
-                    set_state(DISCORD_ERROR, "Verify failed");
-                }
-                miniSocExit();
-                goto error_wait;
-            }
-        }
-
-        // --- ACTIVE state: send /activity every 10 seconds ---
-        if(g_discord_state == DISCORD_ACTIVE)
-        {
-            int activity_retry = 0;
-            const int max_retries = 3;
-
-            while(g_discord_state == DISCORD_ACTIVE && !g_shouldStop)
-            {
-                // Wait 10 seconds between activity updates (with cancel check)
-                svcWaitSynchronization(g_controlEvent, 10LL * 1000 * 1000 * 1000);
-                svcClearEvent(g_controlEvent);
-
-                if(g_shouldStop)
-                    break;
-
-                // Build the activity request
-                u8 aes_key[32];
-                u8 iv[16] = {0};
-                char hash_input[256];
-                u8 hash[32];
-                u8 auth_input[48]; // 40 bytes + 8 PKCS7 padding
-                u32 auth_len;
-                char auth_hex[97]; // 96 hex chars + null
-                char state_enc[64], details_enc[64];
-                char body[512];
-                char response[512];
-                SHA256_CTX sha_ctx;
-                int res;
-
-                // Convert hex key to binary
-                u32 key_hex_len = strlen(g_aes_key_hex);
-                for(u32 i = 0; i < 32 && i * 2 < key_hex_len; i++)
-                {
-                    char hex_byte[3] = {g_aes_key_hex[i * 2], g_aes_key_hex[i * 2 + 1], 0};
-                    aes_key[i] = (u8)strtoul(hex_byte, NULL, 16);
-                }
-
-                // Simple state and details (placeholder)
-                const char *state_str = "Playing on 3DS";
-                const char *details_str = "Luma3DS Discord RPC";
-
-                // URL encode
-                url_encode(state_enc, sizeof(state_enc), state_str);
-                url_encode(details_enc, sizeof(details_enc), details_str);
-
-                // SHA256 of hash_input = state + details + activity_type
-                snprintf(hash_input, sizeof(hash_input), "%s%s%d", state_str, details_str, 0);
-                sha256_init(&sha_ctx);
-                sha256_update(&sha_ctx, (const u8 *)hash_input, strlen(hash_input));
-                sha256_final(&sha_ctx, hash);
-
-                // Build auth_input: counter (8 bytes BE) || hash (32 bytes) = 40 bytes
-                memset(auth_input, 0, sizeof(auth_input));
-                auth_input[0] = (u8)(g_counter >> 56);
-                auth_input[1] = (u8)(g_counter >> 48);
-                auth_input[2] = (u8)(g_counter >> 40);
-                auth_input[3] = (u8)(g_counter >> 32);
-                auth_input[4] = (u8)(g_counter >> 24);
-                auth_input[5] = (u8)(g_counter >> 16);
-                auth_input[6] = (u8)(g_counter >> 8);
-                auth_input[7] = (u8)(g_counter);
-                memcpy(&auth_input[8], hash, 32);
-
-                // PKCS7 padding: add 8 bytes of 0x08
-                memset(&auth_input[40], 0x08, 8);
-
-                // AES-256-CBC encrypt 48 bytes = 3 blocks
-                discord_aes256_cbc_encrypt(aes_key, iv, auth_input, 48, auth_input, &auth_len);
-
-                // Convert auth to hex
-                bytes_to_hex(auth_input, 48, auth_hex);
-
-                // Build POST body
-                snprintf(body, sizeof(body),
-                    "uuid=%s&counter=%llu&auth_hex=%s&state=%s&details=%s&activity_type=0",
-                    g_uuid, g_counter, auth_hex, state_enc, details_enc);
-
-                res = discord_http_post(g_ip_str, g_server_port, "/api/activity",
-                                        body, response, sizeof(response), g_controlEvent);
-
-                if(g_shouldStop)
-                    break;
-
-                if(res == 0)
-                {
-                    // Check for success
-                    char success_str[8];
-                    if(parse_response_field(response, "success", success_str, sizeof(success_str)) &&
-                       strcmp(success_str, "true") == 0)
-                    {
-                        g_counter++;
-                        activity_retry = 0;
-                        DiscordLog_Printf("[ACTIVE] Activity updated (counter=%llu)\n", g_counter);
-                    }
-                    else
-                    {
-                        char err_str[64];
-                        if(parse_response_field(response, "error", err_str, sizeof(err_str)))
-                        {
-                            DiscordLog_Printf("[WARN] Activity error: %s\n", err_str);
-                            if(strstr(err_str, "session_expired"))
-                            {
-                                DiscordLog_Printf("[WARN] Session expired, reconnecting...\n");
-                                set_state(DISCORD_STARTING, "Reconnecting...");
-                                break;
-                            }
-                            else if(strstr(err_str, "replay"))
-                            {
-                                // Counter issue, increment and retry
-                                g_counter++;
-                            }
-                        }
-                        activity_retry++;
-                    }
-                }
-                else
-                {
-                    activity_retry++;
-                    DiscordLog_Printf("[WARN] Activity HTTP failed (%d/%d)\n",
-                        activity_retry, max_retries);
-                }
-
-                // If too many failures, disconnect
-                if(activity_retry >= max_retries && g_discord_state == DISCORD_ACTIVE)
-                {
-                    DiscordLog_Printf("[ERR] Too many failures, disconnecting\n");
-                    set_state(DISCORD_ERROR, "Connection lost");
-                    break;
-                }
-            }
-
-            // If we're not stopping and in error state, clean up
-            if(g_discord_state != DISCORD_ACTIVE && !g_shouldStop)
-            {
-                miniSocExit();
-                goto error_wait;
-            }
-        }
-
-        continue;
-
-error_wait:
-        // Wait before retrying (don't hammer the server)
-        DiscordLog_Printf("[WAIT] Waiting 15s before retry...\n");
-        svcWaitSynchronization(g_controlEvent, 15LL * 1000 * 1000 * 1000);
-        svcClearEvent(g_controlEvent);
-        if(!g_shouldStop)
-        {
-            set_state(DISCORD_STOPPED, "Waiting to retry");
-            DiscordLog_Printf("[STOP] Back to stopped state\n");
-        }
-        continue;
-
-cleanup:
-        // Clean up miniSoc if needed
-        if(g_discord_state == DISCORD_ACTIVE || g_discord_state == DISCORD_LOGIN ||
-           g_discord_state == DISCORD_VERIFY)
-        {
-            miniSocExit();
-        }
-        set_state(DISCORD_STOPPED, "Stopped");
-    }
-
-    DiscordLog_Printf("[THREAD] Exiting\n");
-}
-
-void DiscordRPC_Start(void)
-{
-    // Load config if not yet loaded
-    if(!g_config_loaded)
-    {
-        DiscordLog_Printf("[CMD] Loading config before start...\n");
-        DiscordConfig_Load();
-    }
-
-    if(g_discord_state == DISCORD_STOPPED && !g_shouldStart && g_config_loaded)
-    {
-        g_shouldStart = true;
-        svcSignalEvent(g_controlEvent);
-        DiscordLog_Printf("[CMD] Start requested\n");
-    }
-    else if(!g_config_loaded)
-    {
-        DiscordLog_Printf("[CMD] Cannot start: config not loaded\n");
-    }
-}
-
-void DiscordRPC_Stop(void)
-{
-    if(g_discord_state != DISCORD_STOPPED)
-    {
-        DiscordLog_Printf("[CMD] Stop requested\n");
-        set_state(DISCORD_STOPPED, "Stopped");
-        g_shouldStop = true;
-        svcSignalEvent(g_controlEvent);
-    }
-}
-
-MyThread *DiscordRPC_CreateThread(void)
-{
-    DiscordRPC_Init();
-
-    if(R_FAILED(MyThread_Create(&g_rpcThread, DiscordRPC_ThreadMain,
-                                g_rpcThreadStack, sizeof(g_rpcThreadStack),
-                                53, CORE_SYSTEM)))
-    {
-        DiscordLog_Printf("[ERR] Failed to create RPC thread\n");
-        return NULL;
-    }
-
-    DiscordLog_Printf("[INIT] RPC thread created\n");
-    return &g_rpcThread;
+    DiscordLog_Printf("[INIT] Discord RPC ready\n");
 }

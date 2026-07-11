@@ -190,7 +190,6 @@ void DiscordMenu_ShowAction(void)
         switch(g_discord_state)
         {
             case DISCORD_STOPPED:  stateStr = "Stopped";   stateColor = COLOR_WHITE; break;
-            case DISCORD_STARTING: stateStr = "Starting";  stateColor = RGB565(0x1F, 0x1F, 0x00); break;
             case DISCORD_LOGIN:    stateStr = "Logging in"; stateColor = RGB565(0x1F, 0x1F, 0x00); break;
             case DISCORD_VERIFY:   stateStr = "Verifying"; stateColor = RGB565(0x1F, 0x1F, 0x00); break;
             case DISCORD_ACTIVE:   stateStr = "Connected"; stateColor = COLOR_GREEN; break;
