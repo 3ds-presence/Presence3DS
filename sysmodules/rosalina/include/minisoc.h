@@ -27,6 +27,7 @@ void miniSocUnlockState(bool force);
 
 Result miniSocExitDirect(void);
 Result miniSocExit(void);
+void miniSocAbort(void);
 
 s32 _net_convert_error(s32 sock_retval);
 

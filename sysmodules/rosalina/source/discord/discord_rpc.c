@@ -198,7 +198,19 @@ void DiscordRPC_Stop(void)
 {
     DiscordLog_Printf("[CMD] Stopping...\n");
     g_shouldStop = true;
-    MyThread_Join(&g_rpcThread, -1LL);
+
+    // Wait 3 seconds for the thread to notice g_shouldStop and exit
+    Result res = MyThread_Join(&g_rpcThread, 3LL * 1000 * 1000 * 1000);
+
+    if(R_FAILED(res))
+    {
+        // Thread is stuck in a blocking soc:U IPC (no network).
+        // Abort soc:U handle to unblock it, then wait indefinitely.
+        DiscordLog_Printf("[CMD] Thread timeout, aborting soc:U...\n");
+        miniSocAbort();
+        MyThread_Join(&g_rpcThread, -1LL);
+    }
+
     set_state(DISCORD_STOPPED, "Stopped");
     DiscordLog_Printf("[CMD] Stopped\n");
 }
