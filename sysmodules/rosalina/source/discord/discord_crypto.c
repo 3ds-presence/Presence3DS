@@ -29,6 +29,7 @@
 
 #include <string.h>
 #include "discord/discord_crypto.h"
+#include "discord/discord_util.h"
 
 // AES S-box
 static const u8 sbox[256] = {
@@ -263,4 +264,17 @@ void bytes_to_hex(const u8 *bytes, u32 len, char *hex)
         hex[i * 2 + 1] = hex_chars[bytes[i] & 0x0f];
     }
     hex[len * 2] = '\0';
+}
+
+void discord_aes256_cbc_encrypt_to_hex(const u8 *input, u32 input_len,
+                                       const u8 key[32], const u8 iv[16],
+                                       char *hex_out, u32 *output_len)
+{
+    u8 buf[64]; // 64 is enough for maximum padded size used in this protocol
+    u32 alen;
+
+    discord_aes256_cbc_encrypt(key, iv, input, input_len, buf, &alen);
+    bytes_to_hex(buf, alen, hex_out);
+
+    if(output_len) *output_len = alen;
 }
