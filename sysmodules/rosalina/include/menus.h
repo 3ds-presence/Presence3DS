@@ -31,6 +31,7 @@
 #include "menu.h"
 
 extern Menu rosalinaMenu;
+extern Menu discordMenu;
 
 void RosalinaMenu_TakeScreenshot(void);
 void RosalinaMenu_ShowCredits(void);

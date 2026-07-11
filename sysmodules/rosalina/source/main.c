@@ -45,6 +45,9 @@
 
 #include "task_runner.h"
 #include "plugin.h"
+#include "discord/discord_rpc.h"
+#include "discord/discord_log.h"
+#include "discord/discord_config.h"
 
 bool isN3DS;
 
@@ -266,10 +269,23 @@ int main(void)
     ScreenFiltersMenu_LoadConfig();
     SysConfigMenu_LoadConfig();
 
+    // Initialize Discord RPC
+    DiscordLog_Init();
+    Result discordCfgRes = DiscordConfig_Load();
+    if(R_SUCCEEDED(discordCfgRes))
+    {
+        DiscordLog_Printf("[INIT] Config loaded from /luma/discord_rpc.txt\n");
+    }
+    else
+    {
+        DiscordLog_Printf("[INIT] Config not found (/luma/discord_rpc.txt), use Reload Config in menu\n");
+    }
+
     MyThread *menuThread = menuCreateThread();
     MyThread *taskRunnerThread = taskRunnerCreateThread();
     MyThread *errDispThread = errDispCreateThread();
     bootdiagCreateThread();
+    DiscordRPC_CreateThread();
 
     if (R_FAILED(ServiceManager_Run(services, notifications, NULL)))
         svcBreak(USERBREAK_PANIC);

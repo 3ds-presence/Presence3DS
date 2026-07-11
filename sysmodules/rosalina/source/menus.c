@@ -41,6 +41,7 @@
 #include "fmt.h"
 #include "process_patches.h"
 #include "luma_config.h"
+#include "discord/discord_menu.h"
 
 Menu rosalinaMenu = {
     "Rosalina menu",
@@ -59,6 +60,7 @@ Menu rosalinaMenu = {
         { "Power off / reboot", METHOD, .method = &RosalinaMenu_PowerOffOrReboot },
         { "System info", METHOD, .method = &RosalinaMenu_ShowSystemInfo },
         { "Credits", METHOD, .method = &RosalinaMenu_ShowCredits },
+        { "Discord RPC...", MENU, .menu = &discordMenu },
         { "Debug info", METHOD, .method = &RosalinaMenu_ShowDebugInfo, .visibility = &rosalinaMenuShouldShowDebugInfo },
         {},
     }
