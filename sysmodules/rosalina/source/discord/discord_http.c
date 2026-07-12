@@ -78,31 +78,39 @@ int discord_http_post(const char *host, u16 port, const char *path,
     addr.sin_port = htons(port);
     addr.sin_addr.s_addr = inet_addr(host);
 
-    // Connect with timeout check using svcWaitSynchronization
-    while(true)
+    // Connect with retry limit (max 2 attempts ≈ 60s total TCP timeout when no network)
     {
-        // Check for cancellation
-        if(timeout_event != 0 && svcWaitSynchronization(timeout_event, 0) == 0)
+        int connect_tries = 2;
+        while(connect_tries-- > 0)
         {
-            DiscordLog_Printf("[WARN] HTTP cancelled before connect\n");
-            goto cleanup;
+            // Check for cancellation
+            if(timeout_event != 0 && svcWaitSynchronization(timeout_event, 0) == 0)
+            {
+                DiscordLog_Printf("[WARN] HTTP cancelled before connect\n");
+                goto cleanup;
+            }
+
+            int res = socConnect(sockfd, (struct sockaddr *)&addr, sizeof(addr));
+            if(res == 0)
+                break;
+
+            // Connection failed - check if it's a transient error
+            if(res < -10000)
+            {
+                DiscordLog_Printf("[ERR] Socket service broken: %d\n", res);
+                goto cleanup;
+            }
+
+            DiscordLog_Printf("[WARN] Connect failed: %d, retrying...\n", res);
+            if(connect_tries > 0)
+                svcSleepThread(500 * 1000 * 1000LL);
         }
 
-        int res = socConnect(sockfd, (struct sockaddr *)&addr, sizeof(addr));
-        if(res == 0)
-            break;
-
-        // Connection failed - check if it's a transient error
-        if(res < -10000)
+        if(connect_tries < 0)
         {
-            DiscordLog_Printf("[ERR] Socket service broken: %d\n", res);
+            DiscordLog_Printf("[ERR] Connect failed after retries\n");
             goto cleanup;
         }
-
-        // Retry with timeout check
-        DiscordLog_Printf("[WARN] Connect failed: %d, retrying...\n", res);
-        if(timeout_event != 0 && svcWaitSynchronization(timeout_event, 500 * 1000 * 1000LL) == 0)
-            goto cleanup;
     }
 
     // Send HTTP request

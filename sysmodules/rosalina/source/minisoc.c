@@ -1,4 +1,3 @@
-
 /*
 *   This file is part of Luma3DS.
 *   Copyright (C) 2016-2020 Aurora Wright, TuxSH
@@ -775,6 +774,7 @@ static ssize_t _socuipc_cmda(int sockfd, const void *buf, size_t len, int flags,
 
 ssize_t socRecvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
 {
+    SOC_GUARD;
     if(len < 0x2000)
         return _socuipc_cmd8(sockfd, buf, len, flags, src_addr, addrlen);
     return _socuipc_cmd7(sockfd, buf, len, flags, src_addr, addrlen);
@@ -782,6 +782,7 @@ ssize_t socRecvfrom(int sockfd, void *buf, size_t len, int flags, struct sockadd
 
 ssize_t socSendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen)
 {
+    SOC_GUARD;
     if(len < 0x2000)
         return _socuipc_cmda(sockfd, buf, len, flags, dest_addr, addrlen);
     return _socuipc_cmd9(sockfd, buf, len, flags, dest_addr, addrlen);

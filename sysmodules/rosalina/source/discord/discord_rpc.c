@@ -199,8 +199,8 @@ void DiscordRPC_Stop(void)
     DiscordLog_Printf("[CMD] Stopping...\n");
     g_shouldStop = true;
 
-    // Wait 3 seconds for the thread to notice g_shouldStop and exit
-    Result res = MyThread_Join(&g_rpcThread, 3LL * 1000 * 1000 * 1000);
+    // Wait 5 seconds for the thread to notice g_shouldStop and exit
+    Result res = MyThread_Join(&g_rpcThread, 5LL * 1000 * 1000 * 1000);
 
     if(R_FAILED(res))
     {
