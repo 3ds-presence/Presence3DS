@@ -28,7 +28,7 @@
 
 #include <3ds/types.h>
 
-#define DISCORD_LOG_SIZE 2048
+#define DISCORD_LOG_SIZE 1024
 
 void DiscordLog_Init(void);
 void DiscordLog_Printf(const char *fmt, ...);

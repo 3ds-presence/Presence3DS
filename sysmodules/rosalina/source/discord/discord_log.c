@@ -56,35 +56,27 @@ void DiscordLog_Printf(const char *fmt, ...)
 
     LightLock_Lock(&g_logLock);
 
-    // Append to the log buffer, wrapping around if needed
-    if(g_logPos + len < DISCORD_LOG_SIZE)
+    // Check if we need to make room (+1 for null terminator)
+    if(g_logPos + len + 1 > DISCORD_LOG_SIZE)
     {
-        memcpy(&g_logBuffer[g_logPos], tmp, len);
-        g_logPos += len;
-        g_logBuffer[g_logPos] = '\0';
-    }
-    else
-    {
-        // Buffer full: shift old content and make room
-        int overflow = (g_logPos + len) - DISCORD_LOG_SIZE + 1;
-        int keep = DISCORD_LOG_SIZE - overflow - 1;
-        if(keep > 0)
+        int overflow = (g_logPos + len + 1) - DISCORD_LOG_SIZE;
+        if(overflow >= g_logPos)
         {
-            memmove(g_logBuffer, g_logBuffer + overflow, keep);
-            g_logPos = keep;
-            memcpy(&g_logBuffer[g_logPos], tmp, len);
-            g_logPos += len;
-            g_logBuffer[g_logPos] = '\0';
+            // Everything must be discarded
+            g_logPos = 0;
         }
         else
         {
-            // Just overwrite
-            g_logPos = 0;
-            memcpy(g_logBuffer, tmp, len);
-            g_logPos = len;
-            g_logBuffer[g_logPos] = '\0';
+            // Shift existing content to make room
+            memmove(g_logBuffer, g_logBuffer + overflow, g_logPos - overflow);
+            g_logPos -= overflow;
         }
     }
+
+    // Append new message
+    memcpy(&g_logBuffer[g_logPos], tmp, len);
+    g_logPos += len;
+    g_logBuffer[g_logPos] = '\0';
 
     LightLock_Unlock(&g_logLock);
 }
