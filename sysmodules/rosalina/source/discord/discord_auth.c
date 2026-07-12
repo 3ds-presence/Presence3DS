@@ -46,6 +46,40 @@ extern char g_ip_str[16];
 //  Internal helpers
 // ---------------------------------------------------------------------------
 
+static u64 get_current_title_id(void)
+{
+    u32 pidList[0x40];
+    s32 processAmount;
+
+    if(R_FAILED(svcGetProcessList(&processAmount, pidList, 0x40)))
+        return 0;
+
+    u32 highestPid = 0;
+    u64 titleId = 0;
+
+    for(s32 i = 0; i < processAmount; i++)
+    {
+        Handle processHandle;
+        if(R_FAILED(svcOpenProcess(&processHandle, pidList[i])))
+            continue;
+
+        u64 tid;
+        svcGetProcessInfo((s64 *)&tid, processHandle, 0x10001);
+
+        bool isZombie = svcWaitSynchronization(processHandle, 0) == 0;
+
+        if(!isZombie && pidList[i] >= highestPid)
+        {
+            highestPid = pidList[i];
+            titleId = tid;
+        }
+
+        svcCloseHandle(processHandle);
+    }
+    DiscordLog_Printf("[DBG] Current title ID: %016llX\n", titleId);
+    return titleId;
+}
+
 // Decode hex AES key from config into raw bytes
 static void decode_aes_key(u8 key[32])
 {
@@ -152,8 +186,16 @@ int discord_activity_update(void)
 
     decode_aes_key(key);
 
-    static const char *hstr = "Playing on 3DS";
-    static const char *dstr = "Luma3DS Discord RPC";
+    static char hstr[64];
+    static char dstr[] = "Luma3DS Discord RPC";
+
+    {
+        u64 tid = get_current_title_id();
+        if(tid != 0)
+            snprintf(hstr, sizeof(hstr), "Playing %016llX", tid);
+        else
+            snprintf(hstr, sizeof(hstr), "Playing on 3DS");
+    }
 
     discord_url_encode(hstr, state_enc, sizeof(state_enc));
     discord_url_encode(dstr, details_enc, sizeof(details_enc));
@@ -171,6 +213,13 @@ int discord_activity_update(void)
 
     int r = discord_http_post(g_ip_str, g_server_port, "/api/activity",
                               body, resp, sizeof(resp), 0);
+
+    if (r < 0)
+    {
+        DiscordLog_Printf("[ERR] Activity update failed (r=%d)\n", r);
+        return 2;
+   }
+
     if(r == 0 && discord_parse_field(resp, "success", ok, sizeof(ok)) &&
        strcmp(ok, "true") == 0)
     {

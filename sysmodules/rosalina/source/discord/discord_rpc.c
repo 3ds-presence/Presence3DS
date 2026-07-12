@@ -134,10 +134,23 @@ void DiscordRPC_ThreadMain(void)
         if(g_shouldStop) break;
 
         int ret = discord_activity_update();
+
+        
         if(ret == 1) // session expired
         {
             set_state(DISCORD_LOGIN, "Session expired");
             DiscordLog_Printf("[WARN] Session expired\n");
+        } 
+        else if (ret == 2) // network error
+        {
+            set_state(DISCORD_ERROR, "Network error");
+            DiscordLog_Printf("[ERR] Network error\n");
+        }
+        
+        if (ret != 0) 
+        {
+            DiscordLog_Printf("[THREAD] Error occurred, stopping session\n");
+            active_session = false;
             break;
         }
     }

@@ -33,14 +33,6 @@
 #include "discord/discord_log.h"
 #include "discord/discord_config.h"
 
-// Forward declarations
-static void DiscordMenu_MainAction(void);
-
-static bool discordMenuHasConfig(void)
-{
-    return g_config_loaded;
-}
-
 static bool discordMenuIsStopped(void)
 {
     return g_discord_state == DISCORD_STOPPED;
@@ -59,7 +51,6 @@ Menu discordMenu = {
         { "Stop Discord RPC", METHOD, .method = &DiscordMenu_Stop, .visibility = &discordMenuIsNotStopped },
         { "View Log", METHOD, .method = &DiscordMenu_ViewLog },
         { "Reload Config", METHOD, .method = &DiscordMenu_ReloadConfig },
-        { "Start with config", METHOD, .method = &DiscordMenu_MainAction, .visibility = &discordMenuHasConfig },
         {},
     }
 };
@@ -227,13 +218,4 @@ void DiscordMenu_ShowAction(void)
         Draw_Unlock();
     }
     while(!(waitInput() & KEY_B) && !menuShouldExit);
-}
-
-// Start with config (combined action)
-static void DiscordMenu_MainAction(void)
-{
-    if(g_discord_state == DISCORD_STOPPED)
-        DiscordRPC_Start();
-    else
-        DiscordMenu_ShowAction();
 }

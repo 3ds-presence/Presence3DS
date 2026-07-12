@@ -133,6 +133,7 @@ void initSystem(void)
 bool menuShouldExit = false;
 bool preTerminationRequested = false;
 Handle preTerminationEvent;
+static bool s_wasDiscordActive = false;
 
 static void handleTermNotification(u32 notificationId)
 {
@@ -165,6 +166,20 @@ static void handleSleepNotification(u32 notificationId)
     ptmSysmExit();
 }
 
+static void discord_rpc_start_task(void *argdata)
+{
+    (void)argdata;
+    // Wait 5 seconds for the system to fully stabilise after wake
+    svcSleepThread(5LL * 1000 * 1000 * 1000);
+    DiscordRPC_Start();
+}
+
+static void discord_rpc_stop_task(void *argdata)
+{
+    (void)argdata;
+    DiscordRPC_Stop();
+}
+
 static void handleShellNotification(u32 notificationId)
 {
     // Quick dirty fix
@@ -175,10 +190,20 @@ static void handleShellNotification(u32 notificationId)
         // Note that this notification is also fired on system init.
         // Sequence goes like this: MCU fires notif. 0x200 on shell open
         // and shell close, then NS demuxes it and fires 0x213 and 0x214.
+        if(s_wasDiscordActive)
+        {
+            s_wasDiscordActive = false;
+            TaskRunner_RunTask(discord_rpc_start_task, NULL, 0);
+        }
         handleShellOpened();
         menuShouldExit = false;
     } else {
         // Shell closed
+        if(g_discord_state != DISCORD_STOPPED)
+        {
+            s_wasDiscordActive = true;
+            TaskRunner_RunTask(discord_rpc_stop_task, NULL, 0);
+        }
         menuShouldExit = true;
     }
 
