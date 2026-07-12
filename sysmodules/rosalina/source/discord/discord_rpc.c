@@ -130,12 +130,8 @@ void DiscordRPC_ThreadMain(void)
     set_state(DISCORD_ACTIVE, "Connected to Discord");
     while(!g_shouldStop)
     {
-        svcSleepThread(10LL * 1000 * 1000 * 1000);
-        if(g_shouldStop) break;
-
         int ret = discord_activity_update();
 
-        
         if(ret == 1) // session expired
         {
             set_state(DISCORD_LOGIN, "Session expired");
@@ -151,7 +147,10 @@ void DiscordRPC_ThreadMain(void)
         {
             DiscordLog_Printf("[THREAD] Error occurred, stopping session\n");
             active_session = false;
-            break;
+            g_shouldStop = true;
+        }
+        for (int i = 0; i < 100 && !g_shouldStop; i++) {
+            svcSleepThread(100 * 1000 * 1000); // Sleep 100ms, check for stop signal every 100ms
         }
     }
 
