@@ -32,9 +32,9 @@
 // input_len: length of input data
 // output: buffer of at least input_len + 16 bytes
 // output_len: [out] final padded length (multiple of 16)
-void discord_aes256_cbc_encrypt(const u8 key[32], const u8 iv[16],
-                                const u8 *input, u32 input_len,
-                                u8 *output, u32 *output_len);
+void aes256_cbc_encrypt(const u8 key[32], const u8 iv[16],
+                        const u8 *input, u32 input_len,
+                        u8 *output, u32 *output_len);
 
 // Convert binary to lowercase hex string
 // hex must be at least len * 2 + 1 bytes
@@ -47,6 +47,6 @@ void bytes_to_hex(const u8 *bytes, u32 len, char *hex);
 // iv: 16-byte initialization vector
 // hex_out: output buffer for hex string (must be at least (input_len + 16) * 2 + 1 bytes)
 // output_len: [out] final byte count after encryption (before hex conversion)
-void discord_aes256_cbc_encrypt_to_hex(const u8 *input, u32 input_len,
-                                       const u8 key[32], const u8 iv[16],
-                                       char *hex_out, u32 *output_len);
+void aes256_cbc_encrypt_to_hex(const u8 *input, u32 input_len,
+                               const u8 key[32], const u8 iv[16],
+                               char *hex_out, u32 *output_len);

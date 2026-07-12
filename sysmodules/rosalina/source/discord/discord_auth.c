@@ -30,7 +30,7 @@
 #include <3ds.h>
 #include "discord/discord_auth.h"
 #include "discord/discord_config.h"
-#include "discord/discord_crypto.h"
+#include "discord/aes256_cbc.h"
 #include "discord/discord_http.h"
 #include "discord/discord_util.h"
 #include "discord/discord_log.h"
@@ -110,7 +110,7 @@ static void build_auth(const u8 key[32], const char *msg, u64 counter,
 
     // IV is always zero for this protocol
     static const u8 zero_iv[16] = {0};
-    discord_aes256_cbc_encrypt_to_hex(auth_buf, 40, key, zero_iv, auth_hex, NULL);
+    aes256_cbc_encrypt_to_hex(auth_buf, 40, key, zero_iv, auth_hex, NULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -149,14 +149,14 @@ bool discord_verify(void)
     decode_aes_key(key);
 
     // Build block: just the counter (8 bytes big-endian).
-    // discord_aes256_cbc_encrypt will add PKCS7 padding automatically:
+    // aes256_cbc_encrypt will add PKCS7 padding automatically:
     // 8 → padded to 16 → ciphertext = 16 bytes = 32 hex chars.
     u8 block[8];
     discord_pack_counter(g_counter, block);
 
     // Encrypt and convert to hex
     static const u8 zero_iv[16] = {0};
-    discord_aes256_cbc_encrypt_to_hex(block, 8, key, zero_iv, hex, NULL);
+    aes256_cbc_encrypt_to_hex(block, 8, key, zero_iv, hex, NULL);
 
     snprintf(body, sizeof(body), "uuid=%s&cipher_hex=%s", g_uuid, hex);
 
