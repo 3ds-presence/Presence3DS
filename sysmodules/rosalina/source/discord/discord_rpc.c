@@ -37,6 +37,7 @@
 #include "discord/discord_config.h"
 #include "discord/discord_auth.h"
 #include "discord/discord_log.h"
+#include "discord/discord_activity.h"
 
 volatile DiscordState g_discord_state = DISCORD_STOPPED;
 char g_discord_status[64] = "Stopped";
@@ -130,7 +131,10 @@ void DiscordRPC_ThreadMain(void)
     set_state(DISCORD_ACTIVE, "Connected to Discord");
     while(!g_shouldStop)
     {
-        int ret = discord_activity_update();
+        char data[256];
+        create_activity_string(data, sizeof(data));
+
+        int ret = discord_activity_update(data);
 
         if(ret == 1) // session expired
         {

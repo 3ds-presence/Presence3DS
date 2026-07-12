@@ -46,40 +46,6 @@ extern char g_ip_str[16];
 //  Internal helpers
 // ---------------------------------------------------------------------------
 
-static u64 get_current_title_id(void)
-{
-    u32 pidList[0x40];
-    s32 processAmount;
-
-    if(R_FAILED(svcGetProcessList(&processAmount, pidList, 0x40)))
-        return 0;
-
-    u32 highestPid = 0;
-    u64 titleId = 0;
-
-    for(s32 i = 0; i < processAmount; i++)
-    {
-        Handle processHandle;
-        if(R_FAILED(svcOpenProcess(&processHandle, pidList[i])))
-            continue;
-
-        u64 tid;
-        svcGetProcessInfo((s64 *)&tid, processHandle, 0x10001);
-
-        bool isZombie = svcWaitSynchronization(processHandle, 0) == 0;
-
-        if(!isZombie && pidList[i] >= highestPid)
-        {
-            highestPid = pidList[i];
-            titleId = tid;
-        }
-
-        svcCloseHandle(processHandle);
-    }
-    DiscordLog_Printf("[DBG] Current title ID: %016llX\n", titleId);
-    return titleId;
-}
-
 // Decode hex AES key from config into raw bytes
 static void decode_aes_key(u8 key[32])
 {
@@ -175,40 +141,25 @@ bool discord_verify(void)
     return false;
 }
 
-int discord_activity_update(void)
+int discord_activity_update(char* data)
 {
     u8 key[32];
     char body[512];
     char resp[512];
     char ok[8];
-    char state_enc[64];
-    char details_enc[64];
+    char data_enc[64];
 
     decode_aes_key(key);
 
-    static char hstr[64];
-    static char dstr[] = "Luma3DS Discord RPC";
-
-    {
-        u64 tid = get_current_title_id();
-        if(tid != 0)
-            snprintf(hstr, sizeof(hstr), "Playing %016llX", tid);
-        else
-            snprintf(hstr, sizeof(hstr), "Playing on 3DS");
-    }
-
-    discord_url_encode(hstr, state_enc, sizeof(state_enc));
-    discord_url_encode(dstr, details_enc, sizeof(details_enc));
+    discord_url_encode(data, data_enc, sizeof(data_enc));
 
     {
         char auth_hex[97];
-        char hin[256];
-        snprintf(hin, sizeof(hin), "%s%s%d", hstr, dstr, 0);
-        build_auth(key, hin, g_counter, auth_hex);
+        build_auth(key, data, g_counter, auth_hex);
 
         snprintf(body, sizeof(body),
-            "uuid=%s&counter=%llu&auth_hex=%s&state=%s&details=%s&activity_type=0",
-            g_uuid, g_counter, auth_hex, state_enc, details_enc);
+            "uuid=%s&auth_hex=%s&%s",
+            g_uuid, auth_hex, data);
     }
 
     int r = discord_http_post(g_ip_str, g_server_port, "/api/activity",
@@ -251,8 +202,8 @@ void discord_logout(void)
     build_auth(key, "logout", g_counter, auth_hex);
 
     snprintf(body, sizeof(body),
-        "uuid=%s&counter=%llu&auth_hex=%s",
-        g_uuid, g_counter, auth_hex);
+        "uuid=%s&auth_hex=%s",
+        g_uuid, auth_hex);
 
     DiscordLog_Printf("[LOGOUT] POST /api/logout counter=%llu\n", g_counter);
 
