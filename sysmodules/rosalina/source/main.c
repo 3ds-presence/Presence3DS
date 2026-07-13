@@ -148,6 +148,14 @@ static void handleSleepNotification(u32 notificationId)
     {
         case PTMNOTIFID_SLEEP_REQUESTED:
             menuShouldExit = true;
+            if(miniSocEnabled && s_wasDiscordActive && g_discord_state != DISCORD_STOPPED)
+            {
+                // Poll miniSocEnabled with a 10 second timeout
+                for(int i = 0; i < 100 && g_discord_state != DISCORD_STOPPED; i++)
+                {
+                    svcSleepThread(100 * 1000 * 1000);
+                }
+            }
             PTMSYSM_ReplyToSleepQuery(miniSocEnabled); // deny sleep request if we have network stuff running
             break;
         case PTMNOTIFID_GOING_TO_SLEEP:
