@@ -28,7 +28,7 @@ void create_activity_string(char* buffer, size_t buffer_size) {
         if(tid != 0)
             snprintf(titleid, sizeof(titleid), "%016llX", tid);
         else
-            snprintf(titleid, sizeof(titleid), "Playing on 3DS");
+            snprintf(titleid, sizeof(titleid), "0000000000000000");
     }
 
     snprintf(buffer, buffer_size, "titleid=%s", titleid);
