@@ -28,7 +28,7 @@
  */
 
 #include <string.h>
-#include <stdio.h>
+#include "discord/utils/printf.h"
 #include <3ds.h>
 #include "minisoc.h"
 #include "MyThread.h"
@@ -135,26 +135,34 @@ void DiscordRPC_ThreadMain(void)
         char data[256];
         create_activity_string(data, sizeof(data));
 
+        int ret = -1;
         if (strcmp(data, prev_data) != 0)
         {
             DiscordLog_Printf("[THREAD] Activity changed: %s\n", data);
             strncpy(prev_data, data, sizeof(prev_data) - 1);
             prev_data[sizeof(prev_data) - 1] = '\0';
-            int ret = discord_activity_update(data);
+            ret = discord_activity_update(data);
         } else {
             // No change in activity, just send a heartbeat
-            int ret = discord_activity_heartbeat();
+            ret = discord_activity_heartbeat();
         }
-
-        if(ret == 1) // session expired
-        {
-            set_state(DISCORD_LOGIN, "Session expired");
-            DiscordLog_Printf("[WARN] Session expired\n");
-        } 
-        else if (ret == 2) // network error
-        {
-            set_state(DISCORD_ERROR, "Network error");
-            DiscordLog_Printf("[ERR] Network error\n");
+        
+        switch(ret) {
+            case 0:
+                // All good, continue
+                break;
+            case 1:
+                set_state(DISCORD_LOGIN, "Session expired");
+                DiscordLog_Printf("[WARN] Session expired\n");
+                break;
+            case 2:
+                set_state(DISCORD_ERROR, "Network error");
+                DiscordLog_Printf("[ERR] Network error\n");
+                break;
+            default:
+                set_state(DISCORD_ERROR, "Activity update failed");
+                DiscordLog_Printf("[ERR] Activity update failed (ret=%d)\n", ret);
+                break;
         }
         
         if (ret != 0) 

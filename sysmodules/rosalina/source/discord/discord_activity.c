@@ -1,5 +1,5 @@
 #include <3ds.h>
-#include <stdio.h>
+#include "discord/utils/printf.h"
 
 #include "discord/discord_activity.h"
 #include "discord/discord_log.h"

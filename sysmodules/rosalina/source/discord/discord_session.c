@@ -25,7 +25,7 @@
  */
 
 #include <string.h>
-#include <stdio.h>
+#include "discord/utils/printf.h"
 #include <stdlib.h>
 #include <3ds.h>
 #include "discord/discord_session.h"
