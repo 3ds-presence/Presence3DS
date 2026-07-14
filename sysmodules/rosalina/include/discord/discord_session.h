@@ -29,7 +29,7 @@
 #include <3ds/types.h>
 #include <stdbool.h>
 
-// Protocol state (shared with discord_rpc.c)
+// Protocol state (shared with discord_rpc_main.c)
 extern u64 g_counter;
 extern bool active_session;
 

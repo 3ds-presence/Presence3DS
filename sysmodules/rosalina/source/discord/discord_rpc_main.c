@@ -24,7 +24,7 @@
  *         reasonable ways as different from the original version.
  *
  *   Thread lifecycle & state management for Discord RPC.
- *   Protocol logic (login, verify, activity, logout) lives in discord_auth.c
+ *   Protocol logic (login, verify, activity, logout) lives in discord_session.c
  */
 
 #include <string.h>
@@ -33,9 +33,9 @@
 #include "minisoc.h"
 #include "MyThread.h"
 #include "menu.h"
-#include "discord/discord_rpc.h"
+#include "discord/discord_rpc_main.h"
 #include "discord/discord_config.h"
-#include "discord/discord_auth.h"
+#include "discord/discord_session.h"
 #include "discord/discord_log.h"
 #include "discord/discord_activity.h"
 

@@ -29,7 +29,7 @@
 #include "menu.h"
 #include "draw.h"
 #include "discord/discord_menu.h"
-#include "discord/discord_rpc.h"
+#include "discord/discord_rpc_main.h"
 #include "discord/discord_log.h"
 #include "discord/discord_config.h"
 

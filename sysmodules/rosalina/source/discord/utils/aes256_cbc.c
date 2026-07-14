@@ -28,8 +28,8 @@
  */
 
 #include <string.h>
-#include "discord/aes256_cbc.h"
-#include "discord/discord_util.h"
+#include "discord/utils/aes256_cbc.h"
+#include "discord/utils/discord_util.h"
 
 // AES S-box
 static const u8 sbox[256] = {

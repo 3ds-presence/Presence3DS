@@ -25,7 +25,7 @@
  */
 
 #include <string.h>
-#include "discord/discord_util.h"
+#include "discord/utils/discord_util.h"
 
 void discord_url_encode(const char *src, char *dst, u32 dst_size)
 {

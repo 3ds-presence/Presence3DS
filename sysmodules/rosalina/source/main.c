@@ -45,7 +45,7 @@
 
 #include "task_runner.h"
 #include "plugin.h"
-#include "discord/discord_rpc.h"
+#include "discord/discord_rpc_main.h"
 #include "discord/discord_log.h"
 #include "discord/discord_config.h"
 

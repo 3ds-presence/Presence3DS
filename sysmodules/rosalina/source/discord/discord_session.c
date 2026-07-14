@@ -28,13 +28,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <3ds.h>
-#include "discord/discord_auth.h"
+#include "discord/discord_session.h"
 #include "discord/discord_config.h"
-#include "discord/aes256_cbc.h"
+#include "discord/utils/aes256_cbc.h"
 #include "discord/discord_http.h"
-#include "discord/discord_util.h"
+#include "discord/utils/discord_util.h"
 #include "discord/discord_log.h"
-#include "discord/sha256.h"
+#include "discord/utils/sha256.h"
 
 u64 g_counter = 0;
 bool active_session = false;

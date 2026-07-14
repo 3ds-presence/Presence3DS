@@ -27,7 +27,7 @@
  */
 
 #include <string.h>
-#include "discord/sha256.h"
+#include "discord/utils/sha256.h"
 
 static const u32 k[SHA256_BLOCK_SIZE] = {
     0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
