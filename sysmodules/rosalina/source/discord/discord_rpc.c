@@ -129,12 +129,22 @@ void DiscordRPC_ThreadMain(void)
 
     // --- Activity loop ---
     set_state(DISCORD_ACTIVE, "Connected to Discord");
+    char prev_data[256] = {0};
     while(!g_shouldStop)
     {
         char data[256];
         create_activity_string(data, sizeof(data));
 
-        int ret = discord_activity_update(data);
+        if (strcmp(data, prev_data) != 0)
+        {
+            DiscordLog_Printf("[THREAD] Activity changed: %s\n", data);
+            strncpy(prev_data, data, sizeof(prev_data) - 1);
+            prev_data[sizeof(prev_data) - 1] = '\0';
+            int ret = discord_activity_update(data);
+        } else {
+            // No change in activity, just send a heartbeat
+            int ret = discord_activity_heartbeat();
+        }
 
         if(ret == 1) // session expired
         {

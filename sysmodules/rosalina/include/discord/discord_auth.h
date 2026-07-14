@@ -42,5 +42,8 @@ bool discord_verify(void);
 // Returns 0=OK, 1=session_expired, -1=error
 int discord_activity_update(char* data);
 
+// Send a heartbeat to keep the session alive (0=OK, 1=expired, -1=error, 2=network)
+int discord_activity_heartbeat(void);
+
 // Send logout (no-op if not active)
 void discord_logout(void);

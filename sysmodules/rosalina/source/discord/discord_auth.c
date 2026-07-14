@@ -162,7 +162,7 @@ int discord_activity_update(char* data)
             g_uuid, auth_hex, data);
     }
 
-    int r = discord_http_post(g_ip_str, g_server_port, "/api/activity",
+    int r = discord_http_post(g_ip_str, g_server_port, "/api/activity/set",
                               body, resp, sizeof(resp), 0);
 
     if (r < 0)
@@ -185,6 +185,51 @@ int discord_activity_update(char* data)
         DiscordLog_Printf("[WARN] %s\n", err);
         if(strstr(err, "session_expired"))
             return 1; // session expired
+    }
+
+    return -1;
+}
+
+int discord_activity_heartbeat(void)
+{
+    u8 key[32];
+    char auth_hex[97];
+    char body[512];
+    char resp[512];
+    char ok[8];
+
+    decode_aes_key(key);
+
+    // Build auth for an empty message (server hashes empty string for heartbeat)
+    build_auth(key, "", g_counter, auth_hex);
+
+    snprintf(body, sizeof(body),
+        "uuid=%s&auth_hex=%s",
+        g_uuid, auth_hex);
+
+    int r = discord_http_post(g_ip_str, g_server_port, "/api/activity/heartbeat",
+                              body, resp, sizeof(resp), 0);
+
+    if (r < 0)
+    {
+        DiscordLog_Printf("[ERR] Heartbeat failed (r=%d)\n", r);
+        return 2;
+    }
+
+    if(r == 0 && discord_parse_field(resp, "success", ok, sizeof(ok)) &&
+       strcmp(ok, "true") == 0)
+    {
+        g_counter++;
+        DiscordLog_Printf("[HEARTBEAT] OK counter=%llu\n", g_counter);
+        return 0;
+    }
+
+    char err[64];
+    if(discord_parse_field(resp, "error", err, sizeof(err)))
+    {
+        DiscordLog_Printf("[WARN] %s\n", err);
+        if(strstr(err, "session_expired"))
+            return 1;
     }
 
     return -1;
