@@ -29,7 +29,9 @@
 #include <stddef.h>
 
 #define CFLSTORE_SIZE 0x62 // CFLStoreData = MiiData(0x5E) + pad[2] + crc16[2] = 98 bytes
-#define MII_OUT_SIZE  (CFLSTORE_SIZE * 2 + 1) // 196 hex chars + null = 197
+
+// Hex output excluding the last 2 bytes (crc16): (0x62 - 2) * 2 + null = 189
+#define MII_OUT_SIZE  ((CFLSTORE_SIZE - 2) * 2 + 1)
 
 /**
  * @brief Retrieves the console's main Mii (CFLStoreData) as a lowercase hex string.
@@ -37,7 +39,7 @@
  * The hex string represents the full CFLStoreData structure (0x62 bytes = 98 bytes).
  *
  * @param out      Output buffer to write the hex string into.
- * @param out_size Size of the output buffer. Must be at least 197 (196 hex chars + null terminator).
+ * @param out_size Size of the output buffer. Must be at least 189 (188 hex chars + null terminator).
  * @return         Pointer to `out` on success, NULL on failure.
  */
 char *mii_get_raw_hex(char *out, size_t out_size);

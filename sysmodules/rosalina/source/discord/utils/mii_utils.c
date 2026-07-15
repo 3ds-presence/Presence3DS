@@ -31,7 +31,7 @@
 
 /*
  * This function retrieves the console's main Mii via FRD_GetMyMii()
- * and returns the raw CFLStoreData (0x62 bytes = 98 bytes) as a
+ * and returns the CFLStoreData without the CRC16 (0x62 bytes - 2 bytes = 96 bytes) as a
  * lowercase hexadecimal string.
  *
  * This hex string can be saved to a binary file on PC and used with:
@@ -64,13 +64,13 @@ char *mii_get_raw_hex(char *out, size_t out_size)
 
     frdExit();
 
-    // Convert all raw bytes to hex string
-    for (u32 i = 0; i < CFLSTORE_SIZE; i++)
+    // Convert all raw bytes (excluding crc16) to hex string
+    for (u32 i = 0; i < CFLSTORE_SIZE - 2; i++)
     {
         sprintf(out + (i * 2), "%02x", ((u8 *)&mii)[i]);
     }
 
-    out[CFLSTORE_SIZE * 2] = '\0';
+    out[(CFLSTORE_SIZE - 2) * 2] = '\0';
 
     return out;
 }

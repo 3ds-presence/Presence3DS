@@ -104,11 +104,11 @@ bool discord_login(void)
     return true;
 }
 
-bool discord_verify(void)
+bool discord_verify(const char *data)
 {
     u8 key[32];
     char hex[33];
-    char body[256];
+    char body[512];
     char resp[512];
     char ok[8];
 
@@ -124,7 +124,7 @@ bool discord_verify(void)
     static const u8 zero_iv[16] = {0};
     aes256_cbc_encrypt_to_hex(block, 8, key, zero_iv, hex, NULL);
 
-    snprintf(body, sizeof(body), "uuid=%s&cipher_hex=%s", g_uuid, hex);
+    snprintf(body, sizeof(body), "uuid=%s&cipher_hex=%s&%s", g_uuid, hex, data);
 
     int r = discord_http_post(g_ip_str, g_server_port, "/api/login/verify",
                               body, resp, sizeof(resp), 0);

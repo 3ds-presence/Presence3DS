@@ -37,7 +37,7 @@ extern bool active_session;
 bool discord_login(void);
 
 // Returns true on success
-bool discord_verify(void);
+bool discord_verify(const char *data);
 
 // Returns 0=OK, 1=session_expired, -1=error
 int discord_activity_update(char* data);

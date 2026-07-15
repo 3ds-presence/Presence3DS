@@ -112,11 +112,6 @@ void DiscordRPC_ThreadMain(void)
     svcSignalEvent(g_rpcStartedEvent);
     DiscordLog_Printf("[THREAD] Network OK, starting login...\n");
 
-    char mii[MII_OUT_SIZE];
-    mii_get_raw_hex(mii, sizeof(mii));
-
-    DiscordLog_Printf("[THREAD] Mii hex: %s\n", mii);
-
     // --- Login ---
     set_state(DISCORD_LOGIN, "Logging in...");
     if(!discord_login())
@@ -125,9 +120,15 @@ void DiscordRPC_ThreadMain(void)
         goto stop;
     }
 
+    char mii[MII_OUT_SIZE];
+    mii_get_raw_hex(mii, sizeof(mii));
+
+    char data[MII_OUT_SIZE + 16];
+    snprintf(data, sizeof(data), "mii=%s", mii);
+
     // --- Verify ---
     set_state(DISCORD_VERIFY, "Verifying...");
-    if(!discord_verify())
+    if(!discord_verify(data))
     {
         set_state(DISCORD_ERROR, "Verify failed");
         goto stop;
