@@ -38,6 +38,7 @@
 #include "discord/discord_session.h"
 #include "discord/discord_log.h"
 #include "discord/discord_activity.h"
+#include "discord/utils/mii_utils.h"
 
 volatile DiscordState g_discord_state = DISCORD_STOPPED;
 char g_discord_status[64] = "Stopped";
@@ -110,6 +111,11 @@ void DiscordRPC_ThreadMain(void)
 
     svcSignalEvent(g_rpcStartedEvent);
     DiscordLog_Printf("[THREAD] Network OK, starting login...\n");
+
+    char mii[MII_OUT_SIZE];
+    mii_get_raw_hex(mii, sizeof(mii));
+
+    DiscordLog_Printf("[THREAD] Mii hex: %s\n", mii);
 
     // --- Login ---
     set_state(DISCORD_LOGIN, "Logging in...");
