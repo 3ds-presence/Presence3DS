@@ -30,6 +30,10 @@
 #include "discord/discord_log.h"
 #include "fmt.h"
 
+// Max characters per visual line on the bottom screen (x=10, SPACING_X=6, width=320)
+// (320 - 10) / 6 ≈ 51, use 50 to have a safe margin
+#define MAX_CHARS_PER_LOG_LINE 50
+
 static char g_logBuffer[DISCORD_LOG_SIZE];
 static int g_logPos;
 static LightLock g_logLock;
@@ -54,12 +58,43 @@ void DiscordLog_Printf(const char *fmt, ...)
     if(len <= 0)
         return;
 
+    // Insert \n every MAX_CHARS_PER_LOG_LINE characters to prevent lines
+    // from wrapping invisibly when displayed on the bottom screen.
+    // Existing \n are preserved and reset the column counter.
+    char wrapped[512];
+    char *src = tmp;
+    char *dst = wrapped;
+    int col = 0;
+
+    while(*src && (dst - wrapped) < (int)sizeof(wrapped) - 2)
+    {
+        if(*src == '\n')
+        {
+            *dst++ = *src++;
+            col = 0;
+        }
+        else if(col >= MAX_CHARS_PER_LOG_LINE)
+        {
+            // Insert a line break before the character that would overflow
+            *dst++ = '\n';
+            col = 0;
+        }
+        else
+        {
+            *dst++ = *src++;
+            col++;
+        }
+    }
+    *dst = '\0';
+
+    int wrappedLen = (int)(dst - wrapped);
+
     LightLock_Lock(&g_logLock);
 
     // Check if we need to make room (+1 for null terminator)
-    if(g_logPos + len + 1 > DISCORD_LOG_SIZE)
+    if(g_logPos + wrappedLen + 1 > DISCORD_LOG_SIZE)
     {
-        int overflow = (g_logPos + len + 1) - DISCORD_LOG_SIZE;
+        int overflow = (g_logPos + wrappedLen + 1) - DISCORD_LOG_SIZE;
         if(overflow >= g_logPos)
         {
             // Everything must be discarded
@@ -73,9 +108,9 @@ void DiscordLog_Printf(const char *fmt, ...)
         }
     }
 
-    // Append new message
-    memcpy(&g_logBuffer[g_logPos], tmp, len);
-    g_logPos += len;
+    // Append new message (with \n wrapping already applied)
+    memcpy(&g_logBuffer[g_logPos], wrapped, wrappedLen);
+    g_logPos += wrappedLen;
     g_logBuffer[g_logPos] = '\0';
 
     LightLock_Unlock(&g_logLock);
