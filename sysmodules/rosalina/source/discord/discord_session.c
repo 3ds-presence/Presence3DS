@@ -39,8 +39,8 @@
 u64 g_counter = 0;
 bool active_session = false;
 
-// Global IP string (set by DiscordRPC_Start)
-extern char g_ip_str[16];
+// Global host string (IP address or domain name, set by DiscordRPC_Start)
+extern char g_host_str[256];
 
 // ---------------------------------------------------------------------------
 //  Internal helpers
@@ -91,7 +91,7 @@ bool discord_login(void)
 
     snprintf(body, sizeof(body), "uuid=%s", g_uuid);
 
-    int r = discord_http_post(g_ip_str, g_server_port, "/api/login",
+    int r = discord_http_post(g_host_str, g_server_port, "/api/login",
                               body, resp, sizeof(resp), 0);
     if(r < 0 || !discord_parse_field(resp, "nonce", nonce, sizeof(nonce)))
     {
@@ -126,7 +126,7 @@ bool discord_verify(const char *data)
 
     snprintf(body, sizeof(body), "uuid=%s&cipher_hex=%s&%s", g_uuid, hex, data);
 
-    int r = discord_http_post(g_ip_str, g_server_port, "/api/login/verify",
+    int r = discord_http_post(g_host_str, g_server_port, "/api/login/verify",
                               body, resp, sizeof(resp), 0);
     if(r == 0 && discord_parse_field(resp, "success", ok, sizeof(ok)) &&
        strcmp(ok, "true") == 0)
@@ -162,7 +162,7 @@ int discord_activity_update(char* data)
             g_uuid, auth_hex, data);
     }
 
-    int r = discord_http_post(g_ip_str, g_server_port, "/api/activity/set",
+    int r = discord_http_post(g_host_str, g_server_port, "/api/activity/set",
                               body, resp, sizeof(resp), 0);
 
     if (r < 0)
@@ -207,7 +207,7 @@ int discord_activity_heartbeat(void)
         "uuid=%s&auth_hex=%s",
         g_uuid, auth_hex);
 
-    int r = discord_http_post(g_ip_str, g_server_port, "/api/activity/heartbeat",
+    int r = discord_http_post(g_host_str, g_server_port, "/api/activity/heartbeat",
                               body, resp, sizeof(resp), 0);
 
     if (r < 0)
@@ -252,7 +252,7 @@ void discord_logout(void)
 
     DiscordLog_Printf("[LOGOUT] POST /api/logout counter=%llu\n", g_counter);
 
-    int r = discord_http_post(g_ip_str, g_server_port, "/api/logout",
+    int r = discord_http_post(g_host_str, g_server_port, "/api/logout",
                               body, resp, sizeof(resp), 0);
     if(r == 0 && discord_parse_field(resp, "success", ok, sizeof(ok)) &&
        strcmp(ok, "true") == 0)

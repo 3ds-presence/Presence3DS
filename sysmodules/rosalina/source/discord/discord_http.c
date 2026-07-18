@@ -31,6 +31,7 @@
 #include "minisoc.h"
 #include "discord/discord_http.h"
 #include "discord/discord_log.h"
+#include "discord/utils/soc_utils.h"
 
 // HTTP connection timeout: 5 seconds, recv timeout: 3 seconds
 #define CONNECT_TIMEOUT_NS (5LL * 1000 * 1000 * 1000)
@@ -58,6 +59,8 @@ int discord_http_post(const char *host, u16 port, const char *path,
         "\r\n"
         "%s",
         path, host, port, strlen(body), body);
+    
+    // DiscordLog_Printf("[HTTP] Request:\n%s\n", req);
 
     if(req_len <= 0 || (u32)req_len >= sizeof(req))
     {
@@ -76,7 +79,15 @@ int discord_http_post(const char *host, u16 port, const char *path,
     // Set up server address
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = inet_addr(host);
+
+    // Resolve host (supports both IP addresses and domain names)
+    if(resolve_host(host, (u32 *)&addr.sin_addr.s_addr) != 0)
+    {
+        DiscordLog_Printf("[ERR] Cannot resolve host: %s\n", host);
+        goto cleanup;
+    }
+
+    // DiscordLog_Printf("[HTTP] Connecting to IP: %s, Port: %u\n", inet_ntoa(addr.sin_addr), port);
 
     // Connect with retry limit (max 2 attempts ≈ 60s total TCP timeout when no network)
     {
@@ -167,6 +178,7 @@ int discord_http_post(const char *host, u16 port, const char *path,
         if(total_received > 0)
         {
             response[total_received] = '\0';
+            // DiscordLog_Printf("[HTTP] Response (%u bytes):\n%s\n", total_received, response);
             ret = 0; // Success, response is in buffer
         }
         else

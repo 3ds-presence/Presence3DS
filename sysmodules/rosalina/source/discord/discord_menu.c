@@ -81,10 +81,8 @@ void DiscordMenu_ReloadConfig(void)
         if(R_SUCCEEDED(res))
         {
             Draw_DrawString(10, 30, COLOR_WHITE, "Configuration reloaded.");
-            Draw_DrawFormattedString(10, 50, COLOR_WHITE, "IP: %lu.%lu.%lu.%lu:%u",
-                (g_server_ip >> 0) & 0xFF, (g_server_ip >> 8) & 0xFF,
-                (g_server_ip >> 16) & 0xFF, (g_server_ip >> 24) & 0xFF,
-                g_server_port);
+            Draw_DrawFormattedString(10, 50, COLOR_WHITE, "Server: %s:%u",
+                g_server_host, g_server_port);
             if(g_uuid[0])
                 Draw_DrawFormattedString(10, 70, COLOR_WHITE, "UUID: %s", g_uuid);
         }
@@ -202,10 +200,8 @@ void DiscordMenu_ShowAction(void)
         if(g_config_loaded)
         {
             posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE,
-                "Server: %lu.%lu.%lu.%lu:%u\n",
-                (g_server_ip >> 0) & 0xFF, (g_server_ip >> 8) & 0xFF,
-                (g_server_ip >> 16) & 0xFF, (g_server_ip >> 24) & 0xFF,
-                g_server_port);
+                "Server: %s:%u\n",
+                g_server_host, g_server_port);
         }
         else
         {

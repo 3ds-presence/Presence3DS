@@ -47,7 +47,7 @@ LightLock g_discord_lock;
 static MyThread g_rpcThread;
 static u8 CTR_ALIGN(8) g_rpcThreadStack[0x4000];
 static volatile bool g_shouldStop;
-char g_ip_str[16];
+char g_host_str[256];
 static Handle g_rpcStartedEvent;
 
 // ---------------------------------------------------------------------------
@@ -207,9 +207,9 @@ void DiscordRPC_Start(void)
         return;
     }
 
-    // Prepare IP string
-    u8 *ip = (u8 *)&g_server_ip;
-    snprintf(g_ip_str, sizeof(g_ip_str), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+    // Prepare host string (IP address or domain name)
+    strncpy(g_host_str, g_server_host, sizeof(g_host_str) - 1);
+    g_host_str[sizeof(g_host_str) - 1] = '\0';
 
     g_shouldStop = false;
 
@@ -261,6 +261,6 @@ void DiscordRPC_Init(void)
     LightLock_Init(&g_discord_lock);
     g_shouldStop = false;
     g_counter = 0;
-    g_ip_str[0] = '\0';
+    g_host_str[0] = '\0';
     DiscordLog_Printf("[INIT] Discord RPC ready\n");
 }

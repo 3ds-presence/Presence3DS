@@ -24,17 +24,14 @@
  *         reasonable ways as different from the original version.
  */
 
-#pragma once
+#ifndef SOC_UTILS_H
+#define SOC_UTILS_H
 
-#include <3ds/types.h>
-#include <3ds/result.h>
+#include <3ds.h>
 
-#define DISCORD_CONFIG_PATH "/luma/discord_rpc.txt"
+// Resolve a host string to an IPv4 address in network byte order.
+// Supports both IP addresses ("192.168.1.100") and domain names ("example.com").
+// Returns 0 on success, -1 on failure.
+int resolve_host(const char *host, u32 *ip_out);
 
-extern char g_uuid[37];
-extern char g_aes_key_hex[65];
-extern char g_server_host[256];
-extern u16 g_server_port;
-extern bool g_config_loaded;
-
-Result DiscordConfig_Load(void);
+#endif
