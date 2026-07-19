@@ -226,9 +226,9 @@ static u64 get_current_app_info(FS_MediaType *outMediaType)
 void create_activity_string(char* buffer, size_t buffer_size) {
     char titleid[17];
     char name[512] = "";
-    char publisher[128] = "";
+    char publisher[256] = "";
     char name_enc[1536] = "";
-    char pub_enc[512] = "";
+    char pub_enc[768] = "";
     FS_MediaType mediaType = MEDIATYPE_SD;
 
     u64 tid = get_current_app_info(&mediaType);

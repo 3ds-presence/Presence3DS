@@ -136,10 +136,10 @@ void DiscordRPC_ThreadMain(void)
 
     // --- Activity loop ---
     set_state(DISCORD_ACTIVE, "Connected to Discord");
-    char prev_data[2048] = {0};
+    char prev_data[2500] = {0};
     while(!g_shouldStop)
     {
-        char data[2048];
+        char data[2500];
         create_activity_string(data, sizeof(data));
 
         int ret = -1;

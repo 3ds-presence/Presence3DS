@@ -44,7 +44,7 @@ int discord_http_post(const char *host, u16 port, const char *path,
     int sockfd;
     struct sockaddr_in addr;
     ssize_t sent, received;
-    char req[512];
+    char req[3000];
     int req_len;
     int ret = -1;
     struct linger linger_opt;

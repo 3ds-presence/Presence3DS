@@ -144,7 +144,7 @@ bool discord_verify(const char *data)
 int discord_activity_update(char* data)
 {
     u8 key[32];
-    char body[2048];
+    char body[2700];
     char resp[512];
     char ok[8];
     char auth_hex[97];
