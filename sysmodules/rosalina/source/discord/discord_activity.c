@@ -28,6 +28,7 @@
 #include <3ds.h>
 #include <string.h>
 #include "discord/utils/printf.h"
+#include "discord/utils/discord_util.h"
 
 #include "discord/discord_activity.h"
 #include "discord/discord_log.h"
@@ -38,6 +39,7 @@
 #define SMDH_TITLES_OFFSET 0x0008
 #define SMDH_TITLE_ENTRY_SIZE 0x200
 #define SMDH_SHORT_DESC_OFFSET 0x00
+#define SMDH_LONG_DESC_OFFSET 0x80
 #define SMDH_PUBLISHER_OFFSET 0x180
 
 // Static buffer for SMDH data to avoid stack overflow (RPC thread stack is only 16KB)
@@ -121,10 +123,10 @@ static Result read_smdh(u64 titleId, FS_MediaType mediaType, u8 *smdh_out)
     return res;
 }
 
-// Check if an SMDH language index has a non-empty short description
+// Check if an SMDH language index has a non-empty long description
 static bool smdh_lang_has_name(const u8 *smdh, u8 langIndex)
 {
-    const u16 *desc = (const u16 *)(smdh + SMDH_TITLES_OFFSET + langIndex * SMDH_TITLE_ENTRY_SIZE + SMDH_SHORT_DESC_OFFSET);
+    const u16 *desc = (const u16 *)(smdh + SMDH_TITLES_OFFSET + langIndex * SMDH_TITLE_ENTRY_SIZE + SMDH_LONG_DESC_OFFSET);
     return desc[0] != 0;
 }
 
@@ -134,10 +136,10 @@ static void smdh_copy_lang(const u8 *smdh, u8 langIndex,
                             char *publisher_out, size_t publisher_size)
 {
     u32 entryOffset = SMDH_TITLES_OFFSET + langIndex * SMDH_TITLE_ENTRY_SIZE;
-    const u16 *shortDesc = (const u16 *)(smdh + entryOffset + SMDH_SHORT_DESC_OFFSET);
+    const u16 *longDesc = (const u16 *)(smdh + entryOffset + SMDH_LONG_DESC_OFFSET);
     const u16 *publisher = (const u16 *)(smdh + entryOffset + SMDH_PUBLISHER_OFFSET);
 
-    utf16_to_utf8((uint8_t *)name_out, shortDesc, name_size - 1);
+    utf16_to_utf8((uint8_t *)name_out, longDesc, name_size - 1);
     name_out[name_size - 1] = '\0';
     utf16_to_utf8((uint8_t *)publisher_out, publisher, publisher_size - 1);
     publisher_out[publisher_size - 1] = '\0';
@@ -223,8 +225,10 @@ static u64 get_current_app_info(FS_MediaType *outMediaType)
 
 void create_activity_string(char* buffer, size_t buffer_size) {
     char titleid[17];
-    char name[128] = "";
-    char publisher[64] = "";
+    char name[512] = "";
+    char publisher[128] = "";
+    char name_enc[1536] = "";
+    char pub_enc[512] = "";
     FS_MediaType mediaType = MEDIATYPE_SD;
 
     u64 tid = get_current_app_info(&mediaType);
@@ -251,5 +255,9 @@ void create_activity_string(char* buffer, size_t buffer_size) {
         snprintf(publisher, sizeof(publisher), "Nintendo");
     }
 
-    snprintf(buffer, buffer_size, "titleid=%s&name=%s&publisher=%s", titleid, name, publisher);
+    // URL-encode name and publisher to prevent '&', '=' etc. from breaking the query string
+    discord_url_encode(name, name_enc, sizeof(name_enc));
+    discord_url_encode(publisher, pub_enc, sizeof(pub_enc));
+
+    snprintf(buffer, buffer_size, "titleid=%s&name=%s&publisher=%s", titleid, name_enc, pub_enc);
 }

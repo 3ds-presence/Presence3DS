@@ -144,23 +144,18 @@ bool discord_verify(const char *data)
 int discord_activity_update(char* data)
 {
     u8 key[32];
-    char body[512];
+    char body[2048];
     char resp[512];
     char ok[8];
-    char data_enc[64];
+    char auth_hex[97];
 
     decode_aes_key(key);
 
-    discord_url_encode(data, data_enc, sizeof(data_enc));
+    build_auth(key, data, g_counter, auth_hex);
 
-    {
-        char auth_hex[97];
-        build_auth(key, data, g_counter, auth_hex);
-
-        snprintf(body, sizeof(body),
-            "uuid=%s&auth_hex=%s&%s",
-            g_uuid, auth_hex, data);
-    }
+    snprintf(body, sizeof(body),
+        "uuid=%s&auth_hex=%s&%s",
+        g_uuid, auth_hex, data);
 
     int r = discord_http_post(g_host_str, g_server_port, "/api/activity/set",
                               body, resp, sizeof(resp), 0);
