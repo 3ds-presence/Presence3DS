@@ -40,6 +40,7 @@
 #include "discord/discord_activity.h"
 #include "discord/customRPC/read_memory.h"
 #include "discord/utils/mii_utils.h"
+#include "pmdbgext.h"
 
 volatile DiscordState g_discord_state = DISCORD_STOPPED;
 char g_discord_status[64] = "Stopped";
@@ -181,6 +182,17 @@ void DiscordRPC_ThreadMain(void)
         }
         for (int i = 0; i < 100 && !g_shouldStop; i++) {
             svcSleepThread(100 * 1000 * 1000); // Sleep 100ms, check for stop signal every 100ms
+            // Every one secondes : 
+            if (i % 10 == 0) {
+                FS_ProgramInfo programInfo;
+                u32 pid;
+                u32 launchFlags;
+
+                if(R_FAILED(PMDBG_GetCurrentAppInfo(&programInfo, &pid, &launchFlags)))
+                {
+                    CustomRPC_UnmapPage();
+                }
+            }
         }
     }
 
