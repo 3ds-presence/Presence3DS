@@ -99,6 +99,31 @@ u8 CustomRPC_ReadByte(u32 address)
     return *(volatile u8*)(DEST_ADDR + offset);
 }
 
+u16 CustomRPC_ReadHalfWord(u32 address)
+{
+    if(!g_isMapped)
+        return 0;
+
+    u32 offset = address - g_mappedPageStart;
+    if(offset + sizeof(u16) > g_mappedSize)
+        return 0;
+
+    return *(volatile u16*)(DEST_ADDR + offset);
+}
+
+u32 CustomRPC_ReadWord(u32 address)
+{
+    if(!g_isMapped)
+        return 0;
+
+    u32 offset = address - g_mappedPageStart;
+    if(offset + sizeof(u32) > g_mappedSize)
+        return 0;
+
+    return *(volatile u32*)(DEST_ADDR + offset);
+}
+
+
 u32 CustomRPC_GetMappedPid(void)
 {
     return g_mappedPid;
