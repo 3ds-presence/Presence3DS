@@ -207,11 +207,11 @@ void CustomRPC_BuildExtraString(void)
                 break;
         }
 
-        // Format: 0xADDR=VAL&
+        // Format: ADDR=VAL&
         // addr is up to 8 hex digits, val depends on type (2/4/8 hex digits)
-        // "0xADDR=VAL&" = up to ~22 chars
+        // "ADDR=VAL&" = up to ~20 chars
         int needed = snprintf(g_extra_raw + pos, CUSTOMRPC_EXTRA_SIZE - pos + 1,
-                              "0x%08lX=", (unsigned long)addr);
+                              "%08lX=", (unsigned long)addr);
         if(needed > 0 && pos + needed <= CUSTOMRPC_EXTRA_SIZE)
             pos += needed;
         else
