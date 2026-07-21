@@ -39,6 +39,7 @@
 #include "discord/discord_log.h"
 #include "discord/discord_activity.h"
 #include "discord/customRPC/read_memory.h"
+#include "discord/customRPC/memory_config.h"
 #include "discord/utils/mii_utils.h"
 #include "pmdbgext.h"
 
@@ -191,6 +192,7 @@ void DiscordRPC_ThreadMain(void)
                 if(R_FAILED(PMDBG_GetCurrentAppInfo(&programInfo, &pid, &launchFlags)))
                 {
                     CustomRPC_UnmapPage();
+                    CustomRPC_ClearConfig();
                 }
             }
         }
@@ -198,6 +200,7 @@ void DiscordRPC_ThreadMain(void)
 
 stop:
     CustomRPC_UnmapPage();
+    CustomRPC_ClearConfig();
     if(active_session) discord_logout();
     set_state(DISCORD_STOPPED, "Stopped");
     miniSocExit();

@@ -33,6 +33,7 @@
 #include "discord/discord_activity.h"
 #include "discord/discord_log.h"
 #include "discord/customRPC/read_memory.h"
+#include "discord/customRPC/memory_config.h"
 #include "pmdbgext.h"
 
 #define SMDH_READ_SIZE  0x36C0
@@ -252,14 +253,18 @@ void create_activity_string(char* buffer, size_t buffer_size) {
             DiscordLog_Printf("[DBG] Could not read SMDH for %016llX\n", tid);
         }
 
-        // CustomRPC: manage page mapping based on PID
+        // CustomRPC: manage page mapping and config based on PID
         if(CustomRPC_GetMappedPid() != currentPid)
         {
             CustomRPC_UnmapPage();
-            CustomRPC_MapPage(currentPid);
+            CustomRPC_ClearConfig();
+            if(CustomRPC_LoadConfigForTitle(tid))
+                CustomRPC_MapPage(currentPid);
         }
-        u8 val = CustomRPC_ReadByte(0x004FE6E0);
-        DiscordLog_Printf("[DBG] CustomRPC read from 0x004FE6E0: 0x%02X (%u)\n", val, val);
+
+        // Refresh memory values if config is loaded
+        if(CustomRPC_HasConfig())
+            CustomRPC_BuildExtraString();
     }
     else
     {
@@ -273,5 +278,19 @@ void create_activity_string(char* buffer, size_t buffer_size) {
     discord_url_encode(name, name_enc, sizeof(name_enc));
     discord_url_encode(publisher, pub_enc, sizeof(pub_enc));
 
-    snprintf(buffer, buffer_size, "titleid=%s&name=%s&publisher=%s", titleid, name_enc, pub_enc);
+    snprintf(buffer, buffer_size, "titleid=%s&name=%s&publisher=%s",
+             titleid, name_enc, pub_enc);
+
+    // CustomRPC extra data (URL-encoded to prevent query string corruption)
+    if(CustomRPC_HasConfig())
+    {
+        const char *raw = CustomRPC_GetRawExtra();
+        if(raw[0])
+        {
+            char extra_enc[CUSTOMRPC_EXTRA_SIZE * 3];
+            discord_url_encode(raw, extra_enc, sizeof(extra_enc));
+            snprintf(buffer + strlen(buffer), buffer_size - strlen(buffer),
+                     "&extra=%s", extra_enc);
+        }
+    }
 }

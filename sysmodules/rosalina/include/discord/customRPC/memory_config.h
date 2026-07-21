@@ -28,10 +28,12 @@
 
 #include <3ds/types.h>
 
-void CustomRPC_Init(void);
-bool CustomRPC_MapPage(u32 pid);
-void CustomRPC_UnmapPage(void);
-u8 CustomRPC_ReadByte(u32 address);
-u16 CustomRPC_ReadHalfWord(u32 address);
-u32 CustomRPC_ReadWord(u32 address);
-u32 CustomRPC_GetMappedPid(void);
+#define CUSTOMRPC_CONFIG_PATH  "/luma/rpc"
+#define CUSTOMRPC_MAX_ENTRIES  32
+#define CUSTOMRPC_EXTRA_SIZE   1024
+
+bool CustomRPC_LoadConfigForTitle(u64 titleId);
+bool CustomRPC_HasConfig(void);
+void CustomRPC_BuildExtraString(void);
+const char* CustomRPC_GetRawExtra(void);
+void CustomRPC_ClearConfig(void);
