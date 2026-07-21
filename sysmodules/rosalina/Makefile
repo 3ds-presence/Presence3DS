@@ -24,9 +24,9 @@ export HBLDR_DEFAULT_3DSX_TITLE_NAME ?= "hblauncher_loader"
 #---------------------------------------------------------------------------------
 TARGET		:=	$(notdir $(CURDIR))
 BUILD		:=	build
-SOURCES		:=	source source/gdb source/menus source/plugin source/redshift source/discord source/discord/utils
+SOURCES		:=	source source/gdb source/menus source/plugin source/redshift source/discord source/discord/utils source/discord/customRPC
 DATA		:=	source/gdb/xml data
-INCLUDES	:=	include include/gdb include/menus include/redshift include/discord include/discord/utils
+INCLUDES	:=	include include/gdb include/menus include/redshift include/discord include/discord/utils include/discord/customRPC
 
 #---------------------------------------------------------------------------------
 # options for code generation

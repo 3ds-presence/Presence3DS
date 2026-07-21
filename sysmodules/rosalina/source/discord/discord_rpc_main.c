@@ -38,6 +38,7 @@
 #include "discord/discord_session.h"
 #include "discord/discord_log.h"
 #include "discord/discord_activity.h"
+#include "discord/customRPC/read_memory.h"
 #include "discord/utils/mii_utils.h"
 
 volatile DiscordState g_discord_state = DISCORD_STOPPED;
@@ -184,6 +185,7 @@ void DiscordRPC_ThreadMain(void)
     }
 
 stop:
+    CustomRPC_UnmapPage();
     if(active_session) discord_logout();
     set_state(DISCORD_STOPPED, "Stopped");
     miniSocExit();
@@ -262,5 +264,6 @@ void DiscordRPC_Init(void)
     g_shouldStop = false;
     g_counter = 0;
     g_host_str[0] = '\0';
+    CustomRPC_Init();
     DiscordLog_Printf("[INIT] Discord RPC ready\n");
 }

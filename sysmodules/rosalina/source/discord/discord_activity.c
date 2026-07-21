@@ -32,6 +32,7 @@
 
 #include "discord/discord_activity.h"
 #include "discord/discord_log.h"
+#include "discord/customRPC/read_memory.h"
 #include "pmdbgext.h"
 
 #define SMDH_READ_SIZE  0x36C0
@@ -204,8 +205,8 @@ static void extract_smdh_strings(const u8 *smdh,
     }
 }
 
-// Get the current title ID and media type
-static u64 get_current_app_info(FS_MediaType *outMediaType)
+// Get the current title ID, media type and PID
+static u64 get_current_app_info(FS_MediaType *outMediaType, u32 *outPid)
 {
     FS_ProgramInfo programInfo;
     u32 pid;
@@ -214,12 +215,14 @@ static u64 get_current_app_info(FS_MediaType *outMediaType)
     if(R_FAILED(PMDBG_GetCurrentAppInfo(&programInfo, &pid, &launchFlags)))
     {
         if(outMediaType) *outMediaType = MEDIATYPE_SD;
+        if(outPid) *outPid = 0;
         return 0;
     }
 
     if(outMediaType) *outMediaType = programInfo.mediaType;
+    if(outPid) *outPid = pid;
     u64 titleId = programInfo.programId;
-    DiscordLog_Printf("[DBG] Current title ID: %016llX, mediaType: %d\n", titleId, (int)programInfo.mediaType);
+    DiscordLog_Printf("[DBG] Current title ID: %016llX, PID: %lu, mediaType: %d\n", titleId, pid, (int)programInfo.mediaType);
     return titleId;
 }
 
@@ -230,8 +233,9 @@ void create_activity_string(char* buffer, size_t buffer_size) {
     char name_enc[1536] = "";
     char pub_enc[768] = "";
     FS_MediaType mediaType = MEDIATYPE_SD;
+    u32 currentPid = 0;
 
-    u64 tid = get_current_app_info(&mediaType);
+    u64 tid = get_current_app_info(&mediaType, &currentPid);
     if(tid != 0)
     {
         snprintf(titleid, sizeof(titleid), "%016llX", tid);
@@ -247,12 +251,22 @@ void create_activity_string(char* buffer, size_t buffer_size) {
         {
             DiscordLog_Printf("[DBG] Could not read SMDH for %016llX\n", tid);
         }
+
+        // CustomRPC: manage page mapping based on PID
+        if(CustomRPC_GetMappedPid() != currentPid)
+        {
+            CustomRPC_UnmapPage();
+            CustomRPC_MapPage(currentPid);
+        }
+        u8 val = CustomRPC_ReadByte(0x004FE6E0);
+        DiscordLog_Printf("[DBG] CustomRPC read from 0x004FE6E0: 0x%02X (%u)\n", val, val);
     }
     else
     {
         snprintf(titleid, sizeof(titleid), "0000000000000000");
         snprintf(name, sizeof(name), "Home Menu");
         snprintf(publisher, sizeof(publisher), "Nintendo");
+        CustomRPC_UnmapPage();
     }
 
     // URL-encode name and publisher to prevent '&', '=' etc. from breaking the query string
