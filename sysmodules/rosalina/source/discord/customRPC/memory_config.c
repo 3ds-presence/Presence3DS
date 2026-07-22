@@ -114,8 +114,8 @@ bool CustomRPC_LoadConfigForTitle(u64 titleId)
             next++;
         }
 
-        // Skip leading whitespace (shouldn't occur, but be safe)
-        while(*token == ' ' || *token == '\t')
+        // Skip whitespace
+        while(*token == ' ' || *token == '\t' || *token == '\n' || *token == '\r')
             token++;
 
         if(*token == '\0')
@@ -124,8 +124,8 @@ bool CustomRPC_LoadConfigForTitle(u64 titleId)
             continue;
         }
 
-        // Format: 0xADDRESSe followed by type letter (b/h/w)
-        // Example: 0x004FE6E0b
+        // Format: address followed by type letter (b/h/w)
+        // Example: 004FE6E0b or 0x004FE6E0b
         size_t len = strlen(token);
         if(len < 3)
         {
