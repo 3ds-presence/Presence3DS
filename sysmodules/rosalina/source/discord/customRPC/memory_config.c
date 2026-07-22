@@ -133,6 +133,16 @@ bool CustomRPC_LoadConfigForTitle(u64 titleId)
             continue;
         }
 
+        // Strip trailing whitespace/newlines
+        while(len > 0 && (token[len-1] == ' ' || token[len-1] == '\t' || token[len-1] == '\n' || token[len-1] == '\r'))
+            token[--len] = '\0';
+
+        if(len < 3)
+        {
+            token = next;
+            continue;
+        }
+
         char type = token[len - 1];
         if(type != 'b' && type != 'h' && type != 'w')
         {
