@@ -28,7 +28,7 @@
 
 #include <3ds/types.h>
 
-#define CUSTOMRPC_CONFIG_PATH  "/luma/rpc"
+#define CUSTOMRPC_CONFIG_PATH  "/presence3ds/rpc"
 #define CUSTOMRPC_MAX_ENTRIES  32
 #define CUSTOMRPC_EXTRA_SIZE   1024
 

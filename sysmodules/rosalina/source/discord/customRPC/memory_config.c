@@ -69,7 +69,7 @@ bool CustomRPC_LoadConfigForTitle(u64 titleId)
     char path[64];
     char buf[CUSTOMRPC_EXTRA_SIZE];
 
-    snprintf(path, sizeof(path), CUSTOMRPC_CONFIG_PATH "/%016llX/address.txt", titleId);
+    snprintf(path, sizeof(path), CUSTOMRPC_CONFIG_PATH "/%016llX.txt", titleId);
 
     DiscordLog_Printf("[RPC] Loading memory config: %s\n", path);
 

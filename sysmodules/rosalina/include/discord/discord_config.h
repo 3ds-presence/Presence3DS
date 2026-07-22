@@ -29,7 +29,7 @@
 #include <3ds/types.h>
 #include <3ds/result.h>
 
-#define DISCORD_CONFIG_PATH "/luma/discord_rpc.conf"
+#define DISCORD_CONFIG_PATH "/presence3ds/discord_rpc.conf"
 
 extern char g_uuid[37];
 extern char g_aes_key_hex[65];
