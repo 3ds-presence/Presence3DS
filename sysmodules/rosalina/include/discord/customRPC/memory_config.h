@@ -27,6 +27,7 @@
 #pragma once
 
 #include <3ds/types.h>
+#include <stddef.h>
 
 #define CUSTOMRPC_CONFIG_PATH  "/presence3ds/rpc"
 #define CUSTOMRPC_MAX_ENTRIES  32
@@ -34,6 +35,5 @@
 
 bool CustomRPC_LoadConfigForTitle(u64 titleId);
 bool CustomRPC_HasConfig(void);
-void CustomRPC_BuildExtraString(void);
-const char* CustomRPC_GetRawExtra(void);
+void CustomRPC_BuildExtraString(char *extra_out, size_t extra_size);
 void CustomRPC_ClearConfig(void);

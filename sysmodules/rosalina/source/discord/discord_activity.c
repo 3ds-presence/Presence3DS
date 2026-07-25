@@ -233,6 +233,8 @@ void create_activity_string(char* buffer, size_t buffer_size) {
     char publisher[256] = "";
     char name_enc[1536] = "";
     char pub_enc[768] = "";
+    char extra_buf[CUSTOMRPC_EXTRA_SIZE + 1] = "";
+    char extra_enc[CUSTOMRPC_EXTRA_SIZE * 3] = "";
     FS_MediaType mediaType = MEDIATYPE_SD;
     u32 currentPid = 0;
 
@@ -262,9 +264,15 @@ void create_activity_string(char* buffer, size_t buffer_size) {
                 CustomRPC_MapPage(currentPid);
         }
 
-        // Refresh memory values if config is loaded
+        // Refresh memory values and build extra string if config is loaded
         if(CustomRPC_HasConfig())
-            CustomRPC_BuildExtraString();
+        {
+            CustomRPC_BuildExtraString(extra_buf, sizeof(extra_buf));
+            if(extra_buf[0])
+            {
+                discord_url_encode(extra_buf, extra_enc, sizeof(extra_enc));
+            }
+        }
     }
     else
     {
@@ -281,16 +289,10 @@ void create_activity_string(char* buffer, size_t buffer_size) {
     snprintf(buffer, buffer_size, "titleid=%s&name=%s&publisher=%s",
              titleid, name_enc, pub_enc);
 
-    // CustomRPC extra data (URL-encoded to prevent query string corruption)
-    if(CustomRPC_HasConfig())
+    // Append CustomRPC extra data if present
+    if(extra_enc[0])
     {
-        const char *raw = CustomRPC_GetRawExtra();
-        if(raw[0])
-        {
-            char extra_enc[CUSTOMRPC_EXTRA_SIZE * 3];
-            discord_url_encode(raw, extra_enc, sizeof(extra_enc));
-            snprintf(buffer + strlen(buffer), buffer_size - strlen(buffer),
-                     "&extra=%s", extra_enc);
-        }
+        snprintf(buffer + strlen(buffer), buffer_size - strlen(buffer),
+                 "&extra=%s", extra_enc);
     }
 }

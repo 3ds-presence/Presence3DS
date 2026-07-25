@@ -49,7 +49,6 @@ static AddressEntry g_entries[CUSTOMRPC_MAX_ENTRIES];
 static int g_entry_count;
 static u64 g_loaded_titleid;    // 0 = no config loaded for current title
 static bool g_tried;            // true if we already attempted to load for this titleId
-static char g_extra_raw[CUSTOMRPC_EXTRA_SIZE + 1];
 
 // ---------------------------------------------------------------------------
 //  Public API
@@ -187,15 +186,15 @@ bool CustomRPC_HasConfig(void)
     return g_tried && g_entry_count > 0 && g_loaded_titleid != 0;
 }
 
-void CustomRPC_BuildExtraString(void)
+void CustomRPC_BuildExtraString(char *extra_out, size_t extra_size)
 {
-    g_extra_raw[0] = '\0';
+    extra_out[0] = '\0';
 
     if(!CustomRPC_HasConfig())
         return;
 
     int pos = 0;
-    for(int i = 0; i < g_entry_count && pos < CUSTOMRPC_EXTRA_SIZE; i++)
+    for(int i = 0; i < g_entry_count && pos < (int)extra_size; i++)
     {
         u32 addr = g_entries[i].address;
         u64 val = 0;
@@ -220,37 +219,32 @@ void CustomRPC_BuildExtraString(void)
         // Format: ADDR=VAL&
         // addr is up to 8 hex digits, val depends on type (2/4/8 hex digits)
         // "ADDR=VAL&" = up to ~20 chars
-        int needed = snprintf(g_extra_raw + pos, CUSTOMRPC_EXTRA_SIZE - pos + 1,
+        int needed = snprintf(extra_out + pos, extra_size - pos,
                               "%08lX=", (unsigned long)addr);
-        if(needed > 0 && pos + needed <= CUSTOMRPC_EXTRA_SIZE)
+        if(needed > 0 && pos + needed <= (int)extra_size)
             pos += needed;
         else
             break;
 
-        needed = snprintf(g_extra_raw + pos, CUSTOMRPC_EXTRA_SIZE - pos + 1,
+        needed = snprintf(extra_out + pos, extra_size - pos,
                           val_fmt, (unsigned long)val);
-        if(needed > 0 && pos + needed <= CUSTOMRPC_EXTRA_SIZE)
+        if(needed > 0 && pos + needed <= (int)extra_size)
             pos += needed;
         else
             break;
 
-        if(pos < CUSTOMRPC_EXTRA_SIZE)
+        if(pos < (int)extra_size)
         {
-            g_extra_raw[pos++] = '&';
-            g_extra_raw[pos] = '\0';
+            extra_out[pos++] = '&';
+            extra_out[pos] = '\0';
         }
     }
 
     // Remove trailing '&' if any
-    if(pos > 0 && g_extra_raw[pos - 1] == '&')
-        g_extra_raw[pos - 1] = '\0';
+    if(pos > 0 && extra_out[pos - 1] == '&')
+        extra_out[pos - 1] = '\0';
 
-    DiscordLog_Printf("[RPC] Extra string (%d bytes): %s\n", (int)strlen(g_extra_raw), g_extra_raw);
-}
-
-const char* CustomRPC_GetRawExtra(void)
-{
-    return g_extra_raw;
+    DiscordLog_Printf("[RPC] Extra string (%d bytes): %s\n", (int)strlen(extra_out), extra_out);
 }
 
 void CustomRPC_ClearConfig(void)
@@ -258,5 +252,4 @@ void CustomRPC_ClearConfig(void)
     g_entry_count = 0;
     g_loaded_titleid = 0;
     g_tried = false;
-    g_extra_raw[0] = '\0';
 }
