@@ -44,27 +44,24 @@ int discord_http_post(const char *host, u16 port, const char *path,
     int sockfd;
     struct sockaddr_in addr;
     ssize_t sent, received;
-    char req[3000];
+    char req[512];
     int req_len;
     int ret = -1;
     struct linger linger_opt;
 
-    // Build HTTP request
+    // Build HTTP headers (body is sent separately)
     req_len = snprintf(req, sizeof(req),
         "POST %s HTTP/1.1\r\n"
         "Host: %s:%u\r\n"
         "Content-Type: application/x-www-form-urlencoded\r\n"
         "Content-Length: %u\r\n"
         "Connection: close\r\n"
-        "\r\n"
-        "%s",
-        path, host, port, strlen(body), body);
-    
-    // DiscordLog_Printf("[HTTP] Request:\n%s\n", req);
+        "\r\n",
+        path, host, port, strlen(body));
 
     if(req_len <= 0 || (u32)req_len >= sizeof(req))
     {
-        DiscordLog_Printf("[ERR] Request too long\n");
+        DiscordLog_Printf("[ERR] Request headers too long (%d)\n", req_len);
         return -1;
     }
 
@@ -124,11 +121,20 @@ int discord_http_post(const char *host, u16 port, const char *path,
         }
     }
 
-    // Send HTTP request
+    // Send HTTP headers
     sent = socSend(sockfd, req, req_len, 0);
     if(sent != req_len)
     {
-        DiscordLog_Printf("[ERR] Send failed: %d\n", (int)sent);
+        DiscordLog_Printf("[ERR] Header send failed: %d\n", (int)sent);
+        goto cleanup;
+    }
+
+    // Send body separately to avoid large request buffer
+    ssize_t body_len = (ssize_t)strlen(body);
+    sent = socSend(sockfd, body, body_len, 0);
+    if(sent != body_len)
+    {
+        DiscordLog_Printf("[ERR] Body send failed: %d\n", (int)sent);
         goto cleanup;
     }
 

@@ -41,6 +41,7 @@
 #include "discord/customRPC/read_memory.h"
 #include "discord/customRPC/memory_config.h"
 #include "discord/utils/mii_utils.h"
+#include "discord/utils/sha256.h"
 #include "pmdbgext.h"
 
 volatile DiscordState g_discord_state = DISCORD_STOPPED;
@@ -139,18 +140,25 @@ void DiscordRPC_ThreadMain(void)
 
     // --- Activity loop ---
     set_state(DISCORD_ACTIVE, "Connected to Discord");
-    char prev_data[2500] = {0};
+    u8 prev_hash[32];
+    memset(prev_hash, 0, 32);
     while(!g_shouldStop)
     {
-        char data[2500];
+        char data[5500];
         create_activity_string(data, sizeof(data));
 
+        // Compute SHA-256 hash of the activity data for change detection
+        u8 current_hash[32];
+        SHA256_CTX sha;
+        sha256_init(&sha);
+        sha256_update(&sha, (const u8 *)data, strlen(data));
+        sha256_final(&sha, current_hash);
+
         int ret = -1;
-        if (strcmp(data, prev_data) != 0)
+        if (memcmp(current_hash, prev_hash, 32) != 0)
         {
+            memcpy(prev_hash, current_hash, 32);
             DiscordLog_Printf("[THREAD] Activity changed: %s\n", data);
-            strncpy(prev_data, data, sizeof(prev_data) - 1);
-            prev_data[sizeof(prev_data) - 1] = '\0';
             ret = discord_activity_update(data);
         } else {
             // No change in activity, just send a heartbeat
