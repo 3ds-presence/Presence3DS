@@ -28,9 +28,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <3ds.h>
-#include <arpa/inet.h>
-#include "ifile.h"
 #include "discord/discord_config.h"
+#include "discord/utils/config_reader.h"
 #include "discord/discord_log.h"
 
 char g_uuid[37] = {0};
@@ -39,34 +38,72 @@ char g_server_host[256] = {0};
 u16 g_server_port = 0;
 bool g_config_loaded = false;
 
-// Helper: find value after "KEY=" in line, copy to dst with maxlen
-static bool parse_line(const char *line, const char *key, char *dst, u32 maxlen)
+// Context passed to the config handler
+typedef struct {
+    bool has_uuid;
+    bool has_key;
+    bool has_host;
+    bool has_port;
+    char tmp_str[64];
+} ConfigContext;
+
+static bool config_handler(const char *key, const char *value, void *userdata)
 {
-    u32 keylen = strlen(key);
-    if(strncmp(line, key, keylen) == 0 && line[keylen] == '=')
+    ConfigContext *ctx = (ConfigContext *)userdata;
+
+    if(strcmp(key, "UUID") == 0)
     {
-        const char *val = &line[keylen + 1];
-        u32 vallen = strlen(val);
-        // Strip trailing whitespace/newlines
-        while(vallen > 0 && (val[vallen - 1] == '\r' || val[vallen - 1] == '\n' || val[vallen - 1] == ' '))
-            vallen--;
-        if(vallen > 0 && vallen < maxlen)
+        size_t len = strlen(value);
+        if(len > 0 && len < sizeof(g_uuid))
         {
-            memcpy(dst, val, vallen);
-            dst[vallen] = '\0';
-            return true;
+            memcpy(g_uuid, value, len);
+            g_uuid[len] = '\0';
+            ctx->has_uuid = true;
         }
     }
-    return false;
+    else if(strcmp(key, "AES_KEY") == 0)
+    {
+        size_t len = strlen(value);
+        if(len > 0 && len < sizeof(g_aes_key_hex))
+        {
+            memcpy(g_aes_key_hex, value, len);
+            g_aes_key_hex[len] = '\0';
+            ctx->has_key = true;
+        }
+    }
+    else if(strcmp(key, "SERVER_HOST") == 0)
+    {
+        size_t len = strlen(value);
+        if(len > 0 && len < sizeof(g_server_host))
+        {
+            memcpy(g_server_host, value, len);
+            g_server_host[len] = '\0';
+            ctx->has_host = true;
+        }
+    }
+    else if(strcmp(key, "SERVER_PORT") == 0)
+    {
+        // Manual port parsing
+        u32 port = 0;
+        bool port_ok = true;
+        for(const char *p = value; *p; p++)
+        {
+            if(*p >= '0' && *p <= '9')
+                port = port * 10 + (*p - '0');
+            else { port_ok = false; break; }
+        }
+        if(port_ok && port > 0 && port <= 65535)
+        {
+            g_server_port = (u16)port;
+            ctx->has_port = true;
+        }
+    }
+
+    return true;
 }
 
 Result DiscordConfig_Load(void)
 {
-    Result res;
-    Handle fileHandle;
-    char buf[256];
-    u64 total;
-
     // Reset config
     g_uuid[0] = '\0';
     g_aes_key_hex[0] = '\0';
@@ -74,11 +111,10 @@ Result DiscordConfig_Load(void)
     g_server_port = 0;
     g_config_loaded = false;
 
-    // Open the file directly (pattern from file_loader.c / plugin system)
-    res = FSUSER_OpenFileDirectly(&fileHandle, ARCHIVE_SDMC,
-                                  fsMakePath(PATH_EMPTY, ""),
-                                  fsMakePath(PATH_ASCII, DISCORD_CONFIG_PATH),
-                                  FS_OPEN_READ, 0);
+    ConfigContext ctx;
+    memset(&ctx, 0, sizeof(ctx));
+
+    Result res = ConfigReader_Parse(DISCORD_CONFIG_PATH, config_handler, &ctx);
     if(R_FAILED(res))
     {
         DiscordLog_Printf("[ERR] Can't open " DISCORD_CONFIG_PATH " (0x%08lx)\n", (u32)res);
@@ -86,74 +122,7 @@ Result DiscordConfig_Load(void)
         return res;
     }
 
-    DiscordLog_Printf("[INFO] File opened successfully\n");
-
-    // Read the whole file
-    {
-        u32 read;
-        res = FSFILE_Read(fileHandle, &read, 0, buf, sizeof(buf) - 1);
-        if(R_FAILED(res))
-        {
-            DiscordLog_Printf("[ERR] Read failed (0x%08lx)\n", (u32)res);
-            FSFILE_Close(fileHandle);
-            return res;
-        }
-        buf[read] = '\0';
-        total = read;
-    }
-
-    FSFILE_Close(fileHandle);
-
-    DiscordLog_Printf("[INFO] Read %llu bytes\n", total);
-
-    // Parse lines
-    char *line = buf;
-    char *next;
-    char tmp_str[64];
-    bool has_uuid = false, has_key = false, has_host = false, has_port = false;
-
-    while(line && *line)
-    {
-        // Find next line
-        next = strchr(line, '\n');
-        if(next)
-        {
-            *next = '\0';
-            next++;
-        }
-
-        // Skip empty lines and comments
-        if(line[0] != '\0' && line[0] != '#')
-        {
-            if(parse_line(line, "UUID", g_uuid, sizeof(g_uuid)))
-                has_uuid = true;
-            else if(parse_line(line, "AES_KEY", g_aes_key_hex, sizeof(g_aes_key_hex)))
-                has_key = true;
-            else if(parse_line(line, "SERVER_HOST", g_server_host, sizeof(g_server_host)))
-                has_host = true;
-            else if(parse_line(line, "SERVER_PORT", tmp_str, sizeof(tmp_str)))
-            {
-                // Manual port parsing
-                u32 port = 0;
-                bool port_ok = true;
-                for(const char *p = tmp_str; *p; p++)
-                {
-                    if(*p >= '0' && *p <= '9')
-                        port = port * 10 + (*p - '0');
-                    else { port_ok = false; break; }
-                }
-                if(port_ok && port > 0 && port <= 65535)
-                {
-                    g_server_port = (u16)port;
-                    has_port = true;
-                }
-            }
-        }
-
-        line = next;
-    }
-
-    if(has_uuid && has_key && has_host && has_port)
+    if(ctx.has_uuid && ctx.has_key && ctx.has_host && ctx.has_port)
     {
         g_config_loaded = true;
         DiscordLog_Printf("[OK] UUID=%s, Server=%s:%u\n",
@@ -163,7 +132,7 @@ Result DiscordConfig_Load(void)
     else
     {
         DiscordLog_Printf("[WARN] Config field missing: uuid=%d key=%d host=%d port=%d\n",
-            has_uuid, has_key, has_host, has_port);
+            ctx.has_uuid, ctx.has_key, ctx.has_host, ctx.has_port);
         return -1;
     }
 }

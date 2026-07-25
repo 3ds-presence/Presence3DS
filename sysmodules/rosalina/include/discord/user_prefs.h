@@ -26,13 +26,20 @@
 
 #pragma once
 
-#include "menu.h"
+#include <3ds/types.h>
+#include <3ds/result.h>
+#include <stdbool.h>
 
-extern Menu discordMenu;
+#define USER_PREFS_PATH "/presence3ds/user_prefs.conf"
 
-void DiscordMenu_Start(void);
-void DiscordMenu_Stop(void);
-void DiscordMenu_ViewLog(void);
-void DiscordMenu_ReloadConfig(void);
-void DiscordMenu_EditPrefs(void);
-void DiscordMenu_ShowAction(void);
+// User preferences (default values applied automatically)
+extern bool g_pref_show_mii;
+extern bool g_pref_hide_home;
+extern bool g_pref_auto_start;
+extern bool g_prefs_loaded;
+
+// Load preferences from SD card (or apply defaults if file missing)
+Result UserPrefs_Load(void);
+
+// Save current preferences to SD card
+Result UserPrefs_Save(void);

@@ -35,6 +35,7 @@
 #include "menu.h"
 #include "discord/discord_rpc_main.h"
 #include "discord/discord_config.h"
+#include "discord/user_prefs.h"
 #include "discord/discord_session.h"
 #include "discord/discord_log.h"
 #include "discord/discord_activity.h"
@@ -123,11 +124,17 @@ void DiscordRPC_ThreadMain(void)
         goto stop;
     }
 
-    char mii[MII_OUT_SIZE];
-    mii_get_raw_hex(mii, sizeof(mii));
-
     char data_mii[MII_OUT_SIZE + 16];
-    snprintf(data_mii, sizeof(data_mii), "mii=%s", mii);
+    if(g_pref_show_mii)
+    {
+        char mii[MII_OUT_SIZE];
+        mii_get_raw_hex(mii, sizeof(mii));
+        snprintf(data_mii, sizeof(data_mii), "mii=%s", mii);
+    }
+    else
+    {
+        snprintf(data_mii, sizeof(data_mii), "mii=0");
+    }
 
     // --- Verify ---
     set_state(DISCORD_VERIFY, "Verifying...");
@@ -145,6 +152,17 @@ void DiscordRPC_ThreadMain(void)
     {
         char data[5500];
         create_activity_string(data, sizeof(data));
+
+        // If HIDE_HOME is enabled and we're on Home Menu
+        if(g_pref_hide_home)
+        {
+            // Check if title ID is all zeros (Home Menu)
+            const char *tid_field = strstr(data, "titleid=0000000000000000");
+            if(tid_field)
+            {
+                // TODO
+            }
+        }
 
         // Compute SHA-256 hash of the activity data for change detection
         u8 current_hash[32];
@@ -225,6 +243,14 @@ void DiscordRPC_Start(void)
         DiscordLog_Printf("[CMD] Loading config...\n");
         DiscordConfig_Load();
     }
+
+    // Load user preferences
+    if(!g_prefs_loaded)
+    {
+        DiscordLog_Printf("[CMD] Loading user preferences...\n");
+        UserPrefs_Load();
+    }
+
     if(g_discord_state != DISCORD_STOPPED || !g_config_loaded)
     {
         if(!g_config_loaded) DiscordLog_Printf("[CMD] No config\n");

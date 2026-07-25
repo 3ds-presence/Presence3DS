@@ -26,13 +26,16 @@
 
 #pragma once
 
-#include "menu.h"
+#include <3ds/types.h>
+#include <3ds/result.h>
+#include <stdbool.h>
 
-extern Menu discordMenu;
+// Callback invoked for each parsed KEY=VALUE line.
+// Return false to stop parsing early, true to continue.
+typedef bool (*ConfigReader_Handler)(const char *key, const char *value, void *userdata);
 
-void DiscordMenu_Start(void);
-void DiscordMenu_Stop(void);
-void DiscordMenu_ViewLog(void);
-void DiscordMenu_ReloadConfig(void);
-void DiscordMenu_EditPrefs(void);
-void DiscordMenu_ShowAction(void);
+// Parse a key=value config file from SD.
+// Lines starting with '#' are comments (ignored), empty lines are ignored.
+// Trailing whitespace/CR/LF are stripped from values.
+// The handler is called for every successfully parsed KEY=VALUE pair.
+Result ConfigReader_Parse(const char *path, ConfigReader_Handler handler, void *userdata);

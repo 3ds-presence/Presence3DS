@@ -32,6 +32,7 @@
 #include "discord/discord_rpc_main.h"
 #include "discord/discord_log.h"
 #include "discord/discord_config.h"
+#include "discord/user_prefs.h"
 
 static bool discordMenuIsStopped(void)
 {
@@ -51,6 +52,7 @@ Menu discordMenu = {
         { "Stop Discord RPC", METHOD, .method = &DiscordMenu_Stop, .visibility = &discordMenuIsNotStopped },
         { "View Log", METHOD, .method = &DiscordMenu_ViewLog },
         { "Reload Config", METHOD, .method = &DiscordMenu_ReloadConfig },
+        { "User Preferences", METHOD, .method = &DiscordMenu_EditPrefs },
         {},
     }
 };
@@ -163,6 +165,66 @@ void DiscordMenu_ViewLog(void)
     while(!menuShouldExit);
 }
 
+void DiscordMenu_EditPrefs(void)
+{
+    // Load current prefs from SD
+    UserPrefs_Load();
+
+    int selection = 0;
+    const int num_prefs = 3;
+
+    do
+    {
+        Draw_Lock();
+        Draw_ClearFramebuffer();
+        Draw_DrawString(10, 10, COLOR_TITLE, "User Preferences");
+        Draw_DrawString(10, 22, COLOR_WHITE, "A: toggle   B: save & exit");
+
+        const char *labels[] = {
+            "Show Mii in Presence",
+            "Hide Home activity (TODO)",
+            "Auto-start at boot (TODO)",
+        };
+        bool *values[] = {
+            &g_pref_show_mii,
+            &g_pref_hide_home,
+            &g_pref_auto_start
+        };
+
+        for(int i = 0; i < num_prefs; i++)
+        {
+            u32 y = 40 + i * 20;
+            u32 color = (i == selection) ? RGB565(0x1F, 0x3F, 0x00) : COLOR_WHITE; // highlight selected
+
+            // Draw checkbox
+            if(*values[i])
+                Draw_DrawString(10, y, color, "[*]");
+            else
+                Draw_DrawString(10, y, color, "[ ]");
+
+            Draw_DrawFormattedString(40, y, color, labels[i]);
+        }
+
+        Draw_FlushFramebuffer();
+        Draw_Unlock();
+
+        u32 pressed = waitInput();
+        if(pressed & KEY_DOWN)
+            selection = (selection + 1) % num_prefs;
+        else if(pressed & KEY_UP)
+            selection = (selection - 1 + num_prefs) % num_prefs;
+        else if(pressed & KEY_A)
+            *values[selection] = !*values[selection];
+        else if(pressed & KEY_B)
+        {
+            // Save and exit
+            UserPrefs_Save();
+            break;
+        }
+    }
+    while(!menuShouldExit);
+}
+
 void DiscordMenu_ShowAction(void)
 {
     do
@@ -207,6 +269,15 @@ void DiscordMenu_ShowAction(void)
         {
             posY = Draw_DrawString(10, posY, COLOR_RED, "No config loaded!\n");
         }
+
+        // Preferences
+        posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE,
+            "\nShow Mii: %s  Hide Home: %s\n",
+            g_pref_show_mii ? "ON" : "OFF",
+            g_pref_hide_home ? "ON" : "OFF");
+        posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE,
+            "Auto-Start: %s\n",
+            g_pref_auto_start ? "ON" : "OFF");
 
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "\nPress B to go back.");
 
