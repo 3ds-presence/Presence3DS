@@ -124,16 +124,12 @@ void DiscordRPC_ThreadMain(void)
         goto stop;
     }
 
-    char data_mii[MII_OUT_SIZE + 16];
+    char data_mii[MII_OUT_SIZE + 16] = "\0";
     if(g_pref_show_mii)
     {
         char mii[MII_OUT_SIZE];
         mii_get_raw_hex(mii, sizeof(mii));
         snprintf(data_mii, sizeof(data_mii), "mii=%s", mii);
-    }
-    else
-    {
-        snprintf(data_mii, sizeof(data_mii), "mii=0");
     }
 
     // --- Verify ---
@@ -153,17 +149,6 @@ void DiscordRPC_ThreadMain(void)
         char data[5500];
         create_activity_string(data, sizeof(data));
 
-        // If HIDE_HOME is enabled and we're on Home Menu
-        if(g_pref_hide_home)
-        {
-            // Check if title ID is all zeros (Home Menu)
-            const char *tid_field = strstr(data, "titleid=0000000000000000");
-            if(tid_field)
-            {
-                // TODO
-            }
-        }
-
         // Compute SHA-256 hash of the activity data for change detection
         u8 current_hash[32];
         SHA256_CTX sha;
@@ -176,6 +161,16 @@ void DiscordRPC_ThreadMain(void)
         {
             memcpy(prev_hash, current_hash, 32);
             DiscordLog_Printf("[THREAD] Activity changed: %s\n", data);
+            // If HIDE_HOME is enabled and we're on Home Menu
+            if(g_pref_hide_home)
+            {
+                // Check if title ID is all zeros (Home Menu)
+                const char *tid_field = strstr(data, "titleid=0000000000000000");
+                if(tid_field)
+                {
+                    data[0] = '\0'; // Clear activity data to hide it
+                }
+            }
             ret = discord_activity_update(data);
         } else {
             // No change in activity, just send a heartbeat

@@ -182,8 +182,8 @@ void DiscordMenu_EditPrefs(void)
 
         const char *labels[] = {
             "Show Mii in Presence",
-            "Hide Home activity (TODO)",
-            "Auto-start at boot (TODO)",
+            "Hide Home activity",
+            "Auto-start at boot",
         };
         bool *values[] = {
             &g_pref_show_mii,

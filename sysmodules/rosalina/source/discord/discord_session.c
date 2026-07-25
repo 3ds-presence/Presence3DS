@@ -150,9 +150,11 @@ int discord_activity_update(char* data)
 
     build_auth(key, data, g_counter, auth_hex);
 
-    snprintf(body, sizeof(body),
-        "uuid=%s&auth_hex=%s&%s",
-        g_uuid, auth_hex, data);
+    int len = snprintf(body, sizeof(body), "uuid=%s&auth_hex=%s", g_uuid, auth_hex);
+
+    if (data && *data && len < (int)sizeof(body)) {
+        snprintf(body + len, sizeof(body) - len, "&%s", data);
+    }
 
     int r = discord_http_post(g_server_host, g_server_port, "/api/activity/set",
                               body, resp, sizeof(resp), 0);
