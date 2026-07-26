@@ -22,6 +22,17 @@
 *       * Prohibiting misrepresentation of the origin of that material,
 *         or requiring that modified versions of such material be marked in
 *         reasonable ways as different from the original version.
+*
+*   --- MODIFICATIONS ---
+*   Copyright (C) 2026 LeonLeBreton
+*   
+*   Notice of Modification:
+*   Functions, files, and modules containing "discord" in their name or 
+*   imported from the "discord/" directory are modifications made solely 
+*   by LeonLeBreton. 
+*   
+*   These additions are provided "as is" and do not engage the liability 
+*   of the original Luma3DS authors (Aurora Wright, TuxSH, or contributors).
 */
 
 #include <3ds.h>
@@ -48,6 +59,8 @@
 #include "discord/discord_rpc_main.h"
 #include "discord/discord_log.h"
 #include "discord/discord_config.h"
+#include "discord/user_prefs.h"
+#include "discord/discord_session.h"
 
 bool isN3DS;
 
@@ -182,11 +195,59 @@ static void discord_rpc_start_task(void *argdata)
     DiscordRPC_Start();
 }
 
+static void discord_rpc_start_task_boot(void *argdata)
+{
+    (void)argdata;
+    // Poll ndm:u every 1 second until it becomes available (indicates system boot is advanced)
+    while(!isServiceUsable("ndm:u"))
+    {
+        svcSleepThread(1LL * 1000 * 1000 * 1000); // 1 second
+    }
+    // Once ndm:u is available, wait 5 seconds for WiFi to connect
+    svcSleepThread(5LL * 1000 * 1000 * 1000);
+
+    // Retry loop: if DiscordRPC fails with a network-level error (socket creation or 
+    // network init failure), retry every 3 seconds.
+    for(int retries = 0; retries < 20; retries++) // ~60s max retry
+    {
+        DiscordRPC_Start();
+
+        // Check for network-level error (socket creation or network init failure)
+        bool isNetError = false;
+        LightLock_Lock(&g_discord_lock);
+        if(g_discord_state == DISCORD_ERROR)
+        {
+            if(strstr(g_discord_status, "Socket") != NULL ||
+               strstr(g_discord_status, "Network init") != NULL)
+            {
+                isNetError = true;
+            }
+        }
+        LightLock_Unlock(&g_discord_lock);
+
+        if(!isNetError)
+            break; // Success or non-network error (e.g. login failure), stop retrying
+
+        DiscordLog_Printf("[BOOT] Network not ready (socket failed), retrying in 3s...\n");
+
+        // Reset state so DiscordRPC_Start() will accept a new attempt
+        LightLock_Lock(&g_discord_lock);
+        g_discord_state = DISCORD_STOPPED;
+        strncpy(g_discord_status, "Retrying...", sizeof(g_discord_status) - 1);
+        g_discord_status[sizeof(g_discord_status) - 1] = '\0';
+        LightLock_Unlock(&g_discord_lock);
+
+        svcSleepThread(3LL * 1000 * 1000 * 1000);
+    }
+}
+
 static void discord_rpc_stop_task(void *argdata)
 {
     (void)argdata;
     DiscordRPC_Stop();
 }
+
+static bool s_initialBootComplete = false;
 
 static void handleShellNotification(u32 notificationId)
 {
@@ -203,6 +264,12 @@ static void handleShellNotification(u32 notificationId)
             s_wasDiscordActive = false;
             TaskRunner_RunTask(discord_rpc_start_task, NULL, 0);
         }
+        else if(!s_initialBootComplete && g_pref_auto_start && g_discord_state == DISCORD_STOPPED)
+        {
+            // First shell open at boot: auto-start Discord RPC if enabled.
+            TaskRunner_RunTask(discord_rpc_start_task_boot, NULL, 0);
+        }
+        s_initialBootComplete = true;
         handleShellOpened();
         menuShouldExit = false;
     } else {
@@ -305,7 +372,10 @@ int main(void)
     // Initialize Discord RPC (all operations run on TaskRunner, no secondary threads)
     DiscordLog_Init();
     DiscordRPC_Init();
-    DiscordLog_Printf("[INIT] Discord RPC ready\n");
+
+    // Load user preferences early so auto-start setting is available
+    UserPrefs_Load();
+    DiscordLog_Printf("[INIT] Discord RPC ready (auto_start=%d)\n", g_pref_auto_start);
 
     MyThread *menuThread = menuCreateThread();
     MyThread *taskRunnerThread = taskRunnerCreateThread();
