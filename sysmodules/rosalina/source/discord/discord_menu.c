@@ -181,12 +181,12 @@ void DiscordMenu_EditPrefs(void)
         Draw_DrawString(10, 22, COLOR_WHITE, "A: toggle   B: save & exit");
 
         const char *labels[] = {
-            "Show Mii in Presence",
+            "Hide Mii in Presence",
             "Hide Home activity",
             "Auto-start at boot",
         };
         bool *values[] = {
-            &g_pref_show_mii,
+            &g_pref_hide_mii,
             &g_pref_hide_home,
             &g_pref_auto_start
         };
@@ -272,8 +272,8 @@ void DiscordMenu_ShowAction(void)
 
         // Preferences
         posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE,
-            "\nShow Mii: %s  Hide Home: %s\n",
-            g_pref_show_mii ? "ON" : "OFF",
+            "\nHide Mii: %s  Hide Home: %s\n",
+            g_pref_hide_mii ? "ON" : "OFF",
             g_pref_hide_home ? "ON" : "OFF");
         posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE,
             "Auto-Start: %s\n",

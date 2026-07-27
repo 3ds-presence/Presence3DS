@@ -125,7 +125,7 @@ void DiscordRPC_ThreadMain(void)
     }
 
     char data_mii[MII_OUT_SIZE + 16] = "\0";
-    if(g_pref_show_mii)
+    if(!g_pref_hide_mii)
     {
         char mii[MII_OUT_SIZE];
         mii_get_raw_hex(mii, sizeof(mii));

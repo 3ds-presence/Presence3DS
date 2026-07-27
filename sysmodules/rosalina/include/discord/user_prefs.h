@@ -33,7 +33,7 @@
 #define USER_PREFS_PATH "/presence3ds/user_prefs.conf"
 
 // User preferences (default values applied automatically)
-extern bool g_pref_show_mii;
+extern bool g_pref_hide_mii;
 extern bool g_pref_hide_home;
 extern bool g_pref_auto_start;
 extern bool g_prefs_loaded;

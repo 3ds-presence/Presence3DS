@@ -31,7 +31,7 @@
 #include "discord/utils/config_reader.h"
 #include "discord/discord_log.h"
 
-bool g_pref_show_mii = true;    // Default: show Mii info
+bool g_pref_hide_mii = false;    // Default: don't hide Mii info
 bool g_pref_hide_home = false;  // Default: don't hide Home Menu activity
 bool g_pref_auto_start = false; // Default: manual start only
 bool g_prefs_loaded = false;
@@ -60,8 +60,8 @@ static bool prefs_handler(const char *key, const char *value, void *userdata)
 {
     (void)userdata;
 
-    if(strcasecmp(key, "SHOW_MII") == 0)
-        parse_bool(value, &g_pref_show_mii);
+    if(strcasecmp(key, "HIDE_MII") == 0)
+        parse_bool(value, &g_pref_hide_mii);
     else if(strcasecmp(key, "HIDE_HOME") == 0)
         parse_bool(value, &g_pref_hide_home);
     else if(strcasecmp(key, "AUTO_START_AT_BOOT") == 0)
@@ -73,7 +73,7 @@ static bool prefs_handler(const char *key, const char *value, void *userdata)
 Result UserPrefs_Load(void)
 {
     // Reset to defaults first
-    g_pref_show_mii = true;
+    g_pref_hide_mii = false;
     g_pref_hide_home = false;
     g_pref_auto_start = false;
 
@@ -88,8 +88,8 @@ Result UserPrefs_Load(void)
     }
 
     g_prefs_loaded = true;
-    DiscordLog_Printf("[PREFS] Loaded: show_mii=%d hide_home=%d auto_start=%d\n",
-        g_pref_show_mii, g_pref_hide_home, g_pref_auto_start);
+    DiscordLog_Printf("[PREFS] Loaded: hide_mii=%d hide_home=%d auto_start=%d\n",
+        g_pref_hide_mii, g_pref_hide_home, g_pref_auto_start);
     return 0;
 }
 
@@ -112,10 +112,10 @@ Result UserPrefs_Save(void)
     // Build content in a buffer
     char buf[256];
     int len = snprintf(buf, sizeof(buf),
-        "SHOW_MII=%s\n"
+        "HIDE_MII=%s\n"
         "HIDE_HOME=%s\n"
         "AUTO_START_AT_BOOT=%s\n",
-        g_pref_show_mii ? "true" : "false",
+        g_pref_hide_mii ? "true" : "false",
         g_pref_hide_home ? "true" : "false",
         g_pref_auto_start ? "true" : "false");
 
@@ -130,7 +130,7 @@ Result UserPrefs_Save(void)
         return res;
     }
 
-    DiscordLog_Printf("[PREFS] Saved (%d bytes): show_mii=%d hide_home=%d auto_start=%d\n",
-        len, g_pref_show_mii, g_pref_hide_home, g_pref_auto_start);
+    DiscordLog_Printf("[PREFS] Saved (%d bytes): hide_mii=%d hide_home=%d auto_start=%d\n",
+        len, g_pref_hide_mii, g_pref_hide_home, g_pref_auto_start);
     return 0;
 }
