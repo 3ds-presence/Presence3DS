@@ -39,6 +39,8 @@
 #include "plugin.h"
 #include "menus/screen_filters.h"
 #include "shell.h"
+#include "discord/discord_menu.h"
+#include "discord/discord_rpc_main.h"
 
 //#define ROSALINA_MENU_SELF_SCREENSHOT 1 // uncomment this to enable the feature
 
@@ -504,10 +506,18 @@ static void menuDraw(Menu *menu, u32 selected)
     else
         Draw_DrawFormattedString(SCREEN_BOT_WIDTH - 10 - SPACING_X * 19, SCREEN_BOT_HEIGHT - 20, COLOR_WHITE, "%19s", "");
 
-    if(isRelease)
+    if(menu == &discordMenu)
+    {
+        Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Presence3DS %s", PRESENCE3DS_VERSION);
+    }
+    else if(isRelease)
+    {
         Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Luma3DS %s", versionString);
+    }
     else
+    {
         Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Luma3DS %s-%08lx", versionString, commitHash);
+    }
 
     Draw_FlushFramebuffer();
 }

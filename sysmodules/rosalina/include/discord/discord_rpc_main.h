@@ -41,6 +41,8 @@ extern volatile DiscordState g_discord_state;
 extern char g_discord_status[64];
 extern LightLock g_discord_lock;
 
+#define PRESENCE3DS_VERSION "v1.0.0"
+
 void DiscordRPC_Init(void);
 void DiscordRPC_Start(void);
 void DiscordRPC_Stop(void);

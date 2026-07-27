@@ -93,6 +93,7 @@ void DiscordMenu_ReloadConfig(void)
             Draw_DrawString(10, 30, COLOR_RED, "Failed to load config!");
             Draw_DrawString(10, 50, COLOR_WHITE, "Place /luma/discord_rpc.txt on SD.");
         }
+        Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Presence3DS %s", PRESENCE3DS_VERSION);
         Draw_FlushFramebuffer();
         Draw_Unlock();
     }
@@ -205,6 +206,7 @@ void DiscordMenu_EditPrefs(void)
             Draw_DrawFormattedString(40, y, color, labels[i]);
         }
 
+        Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Presence3DS %s", PRESENCE3DS_VERSION);
         Draw_FlushFramebuffer();
         Draw_Unlock();
 
@@ -281,6 +283,7 @@ void DiscordMenu_ShowAction(void)
 
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "\nPress B to go back.");
 
+        Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Presence3DS %s", PRESENCE3DS_VERSION);
         Draw_FlushFramebuffer();
         Draw_Unlock();
     }
