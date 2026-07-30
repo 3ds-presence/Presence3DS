@@ -24,6 +24,7 @@
  *         reasonable ways as different from the original version.
  */
 
+#include <string.h>
 #include <3ds.h>
 #include "fmt.h"
 #include "menu.h"
@@ -57,8 +58,95 @@ Menu discordMenu = {
     }
 };
 
+// Returns: 0 = cancel, 1 = launch, 2 = launch + never ask again
+static int DiscordMenu_ShowUnsafeWarning(void)
+{
+    int choice = 0; // 0 = no choice yet, 1 = launch, 2 = launch + never ask
+    do
+    {
+        Draw_Lock();
+        Draw_ClearFramebuffer();
+        Draw_DrawString(10, 10, COLOR_TITLE, "Discord RPC -- Security Warning");
+
+        u32 y = 40;
+        y = Draw_DrawString(10, y, COLOR_RED,
+            "WARNING: You are using a private server!");
+        y += SPACING_Y;
+        y = Draw_DrawString(10, y, COLOR_WHITE,
+            "Only use it if you trust the server owner.");
+        y += SPACING_Y;
+        y = Draw_DrawFormattedString(10, y, COLOR_WHITE,
+            "Current Host: %s:%u", g_server_host, g_server_port);
+        y += SPACING_Y * 2;
+
+        y = Draw_DrawString(10, y, COLOR_WHITE,
+            "A - Launch Discord RPC");
+        y += SPACING_Y;
+        y = Draw_DrawString(10, y, COLOR_WHITE,
+            "B - Cancel");
+        y += SPACING_Y;
+        y = Draw_DrawString(10, y, COLOR_WHITE,
+            "Y - Launch and don't show this again");
+
+        Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE,
+            "Presence3DS %s", PRESENCE3DS_VERSION);
+        Draw_FlushFramebuffer();
+        Draw_Unlock();
+
+        u32 pressed = waitInput();
+        if(pressed & KEY_A)
+        {
+            choice = 1;
+            break;
+        }
+        else if(pressed & KEY_B)
+        {
+            choice = 0;
+            break;
+        }
+        else if(pressed & KEY_Y)
+        {
+            choice = 2;
+            break;
+        }
+    }
+    while(!menuShouldExit);
+
+    return choice;
+}
+
 void DiscordMenu_Start(void)
 {
+    // Load config if not already loaded
+    if(!g_config_loaded)
+    {
+        DiscordLog_Printf("[CMD] Loading config...\n");
+        DiscordConfig_Load();
+    }
+
+    // Load user preferences if not already loaded
+    if(!g_prefs_loaded)
+    {
+        DiscordLog_Printf("[CMD] Loading user preferences...\n");
+        UserPrefs_Load();
+    }
+
+    // If config is loaded and host is not the official one, check warning
+    if(g_config_loaded && strcmp(g_server_host, "3ds-presence.top") != 0)
+    {
+        if(!g_pref_allow_unsafe)
+        {
+            int choice = DiscordMenu_ShowUnsafeWarning();
+            if(choice == 0)
+                return; // Cancelled by user
+            else if(choice == 2)
+            {
+                g_pref_allow_unsafe = true;
+                UserPrefs_Save(); // Persist the choice
+            }
+        }
+    }
+
     DiscordRPC_Start();
 }
 

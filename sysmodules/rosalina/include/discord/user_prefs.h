@@ -36,6 +36,7 @@
 extern bool g_pref_hide_mii;
 extern bool g_pref_hide_home;
 extern bool g_pref_auto_start;
+extern bool g_pref_allow_unsafe;
 extern bool g_prefs_loaded;
 
 // Load preferences from SD card (or apply defaults if file missing)
