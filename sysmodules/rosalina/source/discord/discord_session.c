@@ -89,7 +89,7 @@ bool discord_login(void)
     snprintf(body, sizeof(body), "uuid=%s", g_uuid);
 
     int r = discord_http_post(g_server_host, g_server_port, "/api/login",
-                              body, resp, sizeof(resp), 0);
+                              body, NULL, resp, sizeof(resp), 0);
     if(r < 0 || !discord_parse_field(resp, "nonce", nonce, sizeof(nonce)))
     {
         DiscordLog_Printf("[ERR] Login failed\n");
@@ -105,7 +105,7 @@ bool discord_verify(const char *data)
 {
     u8 key[32];
     char hex[33];
-    char body[512];
+    char body[160];
     char resp[512];
     char ok[8];
 
@@ -121,10 +121,16 @@ bool discord_verify(const char *data)
     static const u8 zero_iv[16] = {0};
     aes256_cbc_encrypt_to_hex(block, 8, key, zero_iv, hex, NULL);
 
-    snprintf(body, sizeof(body), "uuid=%s&cipher_hex=%s&%s", g_uuid, hex, data);
+    snprintf(body, sizeof(body), "uuid=%s&cipher_hex=%s", g_uuid, hex);
+    if(data && *data)
+    {
+        size_t len = strlen(body);
+        body[len] = '&';
+        body[len + 1] = '\0';
+    }
 
     int r = discord_http_post(g_server_host, g_server_port, "/api/login/verify",
-                              body, resp, sizeof(resp), 0);
+                              body, data, resp, sizeof(resp), 0);
     if(r == 0 && discord_parse_field(resp, "success", ok, sizeof(ok)) &&
        strcmp(ok, "true") == 0)
     {
@@ -141,7 +147,7 @@ bool discord_verify(const char *data)
 int discord_activity_update(char* data)
 {
     u8 key[32];
-    char body[2700];
+    char body[160];
     char resp[512];
     char ok[8];
     char auth_hex[97];
@@ -150,14 +156,16 @@ int discord_activity_update(char* data)
 
     build_auth(key, data, g_counter, auth_hex);
 
-    int len = snprintf(body, sizeof(body), "uuid=%s&auth_hex=%s", g_uuid, auth_hex);
-
-    if (data && *data && len < (int)sizeof(body)) {
-        snprintf(body + len, sizeof(body) - len, "&%s", data);
+    snprintf(body, sizeof(body), "uuid=%s&auth_hex=%s", g_uuid, auth_hex);
+    if(data && *data)
+    {
+        size_t len = strlen(body);
+        body[len] = '&';
+        body[len + 1] = '\0';
     }
 
     int r = discord_http_post(g_server_host, g_server_port, "/api/activity/set",
-                              body, resp, sizeof(resp), 0);
+                              body, data, resp, sizeof(resp), 0);
 
     if (r < 0)
     {
@@ -202,7 +210,7 @@ int discord_activity_heartbeat(void)
         g_uuid, auth_hex);
 
     int r = discord_http_post(g_server_host, g_server_port, "/api/activity/heartbeat",
-                              body, resp, sizeof(resp), 0);
+                              body, NULL, resp, sizeof(resp), 0);
 
     if (r < 0)
     {
@@ -247,7 +255,7 @@ void discord_logout(void)
     DiscordLog_Printf("[LOGOUT] POST /api/logout counter=%llu\n", g_counter);
 
     int r = discord_http_post(g_server_host, g_server_port, "/api/logout",
-                              body, resp, sizeof(resp), 0);
+                              body, NULL, resp, sizeof(resp), 0);
     if(r == 0 && discord_parse_field(resp, "success", ok, sizeof(ok)) &&
        strcmp(ok, "true") == 0)
     {

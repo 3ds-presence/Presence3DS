@@ -37,17 +37,42 @@
 #define CONNECT_TIMEOUT_NS (5LL * 1000 * 1000 * 1000)
 #define RECV_TIMEOUT_NS    (3LL * 1000 * 1000 * 1000)
 
+// Send all bytes over the socket, handling partial sends.
+// Returns 0 on success, -1 on error.
+static int send_all(int sockfd, const char *buf, size_t len)
+{
+    ssize_t sent;
+    while(len > 0)
+    {
+        sent = socSend(sockfd, buf, len, 0);
+        if(sent <= 0)
+        {
+            DiscordLog_Printf("[ERR] Send failed: %d\n", (int)sent);
+            return -1;
+        }
+        buf += sent;
+        len -= (size_t)sent;
+    }
+    return 0;
+}
+
 int discord_http_post(const char *host, u16 port, const char *path,
-                      const char *body, char *response, u32 resp_size,
-                      Handle timeout_event)
+                      const char *body, const char *body_extra,
+                      char *response, u32 resp_size, Handle timeout_event)
 {
     int sockfd;
     struct sockaddr_in addr;
-    ssize_t sent, received;
+    ssize_t received;
     char req[512];
     int req_len;
     int ret = -1;
     struct linger linger_opt;
+    size_t body_len, extra_len;
+
+    if(body == NULL) body = "";
+    if(body_extra == NULL) body_extra = "";
+    body_len = strlen(body);
+    extra_len = strlen(body_extra);
 
     // Build HTTP headers (body is sent separately)
     req_len = snprintf(req, sizeof(req),
@@ -57,7 +82,7 @@ int discord_http_post(const char *host, u16 port, const char *path,
         "Content-Length: %u\r\n"
         "Connection: close\r\n"
         "\r\n",
-        path, host, port, strlen(body));
+        path, host, port, (unsigned int)(body_len + extra_len));
 
     if(req_len <= 0 || (u32)req_len >= sizeof(req))
     {
@@ -122,21 +147,15 @@ int discord_http_post(const char *host, u16 port, const char *path,
     }
 
     // Send HTTP headers
-    sent = socSend(sockfd, req, req_len, 0);
-    if(sent != req_len)
-    {
-        DiscordLog_Printf("[ERR] Header send failed: %d\n", (int)sent);
+    if(send_all(sockfd, req, req_len) != 0)
         goto cleanup;
-    }
 
-    // Send body separately to avoid large request buffer
-    ssize_t body_len = (ssize_t)strlen(body);
-    sent = socSend(sockfd, body, body_len, 0);
-    if(sent != body_len)
-    {
-        DiscordLog_Printf("[ERR] Body send failed: %d\n", (int)sent);
+    // Send body segments separately to avoid concatenating into a large buffer
+    if(send_all(sockfd, body, body_len) != 0)
         goto cleanup;
-    }
+
+    if(extra_len > 0 && send_all(sockfd, body_extra, extra_len) != 0)
+        goto cleanup;
 
     // Receive response (with timeout via socPoll or checking event)
     {

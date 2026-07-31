@@ -32,11 +32,14 @@
 // host: IP string (e.g. "192.168.1.42")
 // port: port number
 // path: URL path (e.g. "/login")
-// body: form-url-encoded body
+// body: form-url-encoded body (may be empty)
+// body_extra: additional form-url-encoded segment appended after body, or NULL
+//             (sent as-is, without any separator, so the separator must be
+//              included at the end of body if body_extra is non-empty)
 // response: buffer to receive response (must be at least resp_size)
 // resp_size: size of response buffer
 // timeout_event: Handle to check for cancellation (signal = abort), or 0
 // Returns 0 on success, negative on error
 int discord_http_post(const char *host, u16 port, const char *path,
-                      const char *body, char *response, u32 resp_size,
-                      Handle timeout_event);
+                      const char *body, const char *body_extra,
+                      char *response, u32 resp_size, Handle timeout_event);
