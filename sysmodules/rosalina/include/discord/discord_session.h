@@ -29,6 +29,8 @@
 #include <3ds/types.h>
 #include <stdbool.h>
 
+#define API_ROUTE "/api/3ds/"
+
 // Protocol state (shared with discord_rpc_main.c)
 extern u64 g_counter;
 extern bool active_session;

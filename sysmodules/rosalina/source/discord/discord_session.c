@@ -88,7 +88,7 @@ bool discord_login(void)
 
     snprintf(body, sizeof(body), "uuid=%s", g_uuid);
 
-    int r = discord_http_post(g_server_host, g_server_port, "/api/login",
+    int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "login",
                               body, NULL, resp, sizeof(resp), 0);
     if(r < 0 || !discord_parse_field(resp, "nonce", nonce, sizeof(nonce)))
     {
@@ -129,7 +129,7 @@ bool discord_verify(const char *data)
         body[len + 1] = '\0';
     }
 
-    int r = discord_http_post(g_server_host, g_server_port, "/api/login/verify",
+    int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "login/verify",
                               body, data, resp, sizeof(resp), 0);
     if(r == 0 && discord_parse_field(resp, "success", ok, sizeof(ok)) &&
        strcmp(ok, "true") == 0)
@@ -164,7 +164,7 @@ int discord_activity_update(char* data)
         body[len + 1] = '\0';
     }
 
-    int r = discord_http_post(g_server_host, g_server_port, "/api/activity/set",
+    int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "activity/set",
                               body, data, resp, sizeof(resp), 0);
 
     if (r < 0)
@@ -209,7 +209,7 @@ int discord_activity_heartbeat(void)
         "uuid=%s&auth_hex=%s",
         g_uuid, auth_hex);
 
-    int r = discord_http_post(g_server_host, g_server_port, "/api/activity/heartbeat",
+    int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "activity/heartbeat",
                               body, NULL, resp, sizeof(resp), 0);
 
     if (r < 0)
@@ -252,9 +252,9 @@ void discord_logout(void)
         "uuid=%s&auth_hex=%s",
         g_uuid, auth_hex);
 
-    DiscordLog_Printf("[LOGOUT] POST /api/logout counter=%llu\n", g_counter);
+    DiscordLog_Printf("[LOGOUT] POST /api/3ds/logout counter=%llu\n", g_counter);
 
-    int r = discord_http_post(g_server_host, g_server_port, "/api/logout",
+    int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "logout",
                               body, NULL, resp, sizeof(resp), 0);
     if(r == 0 && discord_parse_field(resp, "success", ok, sizeof(ok)) &&
        strcmp(ok, "true") == 0)
