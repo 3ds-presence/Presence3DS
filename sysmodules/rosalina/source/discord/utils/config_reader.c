@@ -33,7 +33,6 @@ Result ConfigReader_Parse(const char *path, ConfigReader_Handler handler, void *
     Result res;
     Handle fileHandle;
     char buf[256];
-    u64 total;
 
     res = FSUSER_OpenFileDirectly(&fileHandle, ARCHIVE_SDMC,
                                   fsMakePath(PATH_EMPTY, ""),
@@ -52,62 +51,41 @@ Result ConfigReader_Parse(const char *path, ConfigReader_Handler handler, void *
             return res;
         }
         buf[read] = '\0';
-        total = read;
     }
 
     FSFILE_Close(fileHandle);
 
-    (void)total;
-
-    // Parse lines
-    char *line = buf;
-    char *next;
-
-    while(line && *line)
+    // Parse line by line
+    char *save = NULL;
+    for(char *line = strtok_r(buf, "\n", &save);
+        line != NULL;
+        line = strtok_r(NULL, "\n", &save))
     {
-        // Find next line
-        next = strchr(line, '\n');
-        if(next)
-        {
-            *next = '\0';
-            next++;
-        }
-
         // Skip empty lines and comments
-        if(line[0] != '\0' && line[0] != '#')
-        {
-            // Find '='
-            char *eq = strchr(line, '=');
-            if(eq)
-            {
-                *eq = '\0';
-                const char *key = line;
-                const char *val = eq + 1;
+        if(line[0] == '#' || line[0] == '\0')
+            continue;
 
-                // Strip trailing whitespace from key
-                char *pk = (char *)key + strlen(key) - 1;
-                while(pk >= key && (*pk == ' ' || *pk == '\t'))
-                    *(pk--) = '\0';
+        // Split KEY=VALUE
+        char *eq = strchr(line, '=');
+        if(!eq)
+            continue;
+        *eq = '\0';
+        const char *key = line;
+        const char *val = eq + 1;
 
-                // Strip trailing whitespace/CR/LF from value
-                size_t vallen = strlen(val);
-                while(vallen > 0 && (val[vallen - 1] == '\r' || val[vallen - 1] == '\n' || val[vallen - 1] == ' ' || val[vallen - 1] == '\t'))
-                    vallen--;
-                // We'll work with a temporary null-terminated area
-                // Since buf is mutable, we can just write the null terminator
-                // But val points into buf, and we already null-terminated at eq.
-                // We need a temporary copy or just write into buf.
-                // Let's just pass the val as-is and let the callback handle trimming if needed.
-                // Actually the values from the original code trim trailing whitespace.
-                // Since val points into buf, we can safely write null.
-                ((char *)val)[vallen] = '\0';
+        // Strip trailing whitespace from key
+        char *pk = (char *)key + strlen(key) - 1;
+        while(pk >= key && (*pk == ' ' || *pk == '\t'))
+            *(pk--) = '\0';
 
-                if(!handler(key, val, userdata))
-                    break;
-            }
-        }
+        // Strip trailing whitespace/CR/LF from value (val points into the mutable buf)
+        size_t vallen = strlen(val);
+        while(vallen > 0 && (val[vallen - 1] == '\r' || val[vallen - 1] == '\n' || val[vallen - 1] == ' ' || val[vallen - 1] == '\t'))
+            vallen--;
+        ((char *)val)[vallen] = '\0';
 
-        line = next;
+        if(!handler(key, val, userdata))
+            break;
     }
 
     return 0;

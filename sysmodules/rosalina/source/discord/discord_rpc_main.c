@@ -125,7 +125,7 @@ void DiscordRPC_ThreadMain(void)
     }
 
     char data_mii[MII_OUT_SIZE + 16] = "\0";
-    if(!g_pref_hide_mii)
+    if(!g_pref_values[PREFS_HIDE_MII])
     {
         char mii[MII_OUT_SIZE];
         mii_get_raw_hex(mii, sizeof(mii));
@@ -162,7 +162,7 @@ void DiscordRPC_ThreadMain(void)
             memcpy(prev_hash, current_hash, 32);
             DiscordLog_Printf("[THREAD] Activity changed: %s\n", data);
             // If HIDE_HOME is enabled and we're on Home Menu
-            if(g_pref_hide_home)
+            if(g_pref_values[PREFS_HIDE_HOME])
             {
                 // Check if title ID is all zeros (Home Menu)
                 const char *tid_field = strstr(data, "titleid=0000000000000000");

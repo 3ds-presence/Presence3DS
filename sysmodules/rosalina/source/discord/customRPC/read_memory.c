@@ -50,7 +50,7 @@ bool CustomRPC_MapPage(u32 pid)
     if(R_FAILED(svcOpenProcess(&g_mappedProcessHandle, pid)))
         return false;
 
-    // Get full code region info (same as MemoryViewer in process_list.c)
+    // Get full code region info
     s64 textSize, rodataSize, dataSize, startAddr;
     svcGetProcessInfo(&textSize, g_mappedProcessHandle, 0x10002);
     svcGetProcessInfo(&rodataSize, g_mappedProcessHandle, 0x10003);

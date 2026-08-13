@@ -25,16 +25,23 @@
  */
 
 #include <string.h>
-#include <stdio.h>
 #include <3ds.h>
+#include "discord/utils/printf.h"
 #include "discord/user_prefs.h"
 #include "discord/utils/config_reader.h"
 #include "discord/discord_log.h"
 
-bool g_pref_hide_mii = false;    // Default: don't hide Mii info
-bool g_pref_hide_home = false;  // Default: don't hide Home Menu activity
-bool g_pref_auto_start = false; // Default: manual start only
-bool g_pref_allow_unsafe = false; // Default: show warning for non-official servers
+// All user preferences:
+// key (config file), label (menu), default value.
+// Empty label means the preference is hidden in the menu.
+const UserPrefMeta g_user_prefs[PREFS_COUNT] = {
+    [PREFS_HIDE_MII]     = { "HIDE_MII",           "Hide Mii in Presence", false },
+    [PREFS_HIDE_HOME]    = { "HIDE_HOME",          "Hide Home activity",   false },
+    [PREFS_AUTO_START]   = { "AUTO_START_AT_BOOT", "Auto-start at boot",   false },
+    [PREFS_ALLOW_UNSAFE] = { "ALLOW_UNSAFE",       "",                     false },
+};
+
+bool g_pref_values[PREFS_COUNT] = { false };
 bool g_prefs_loaded = false;
 
 // Helper: parse "true"/"false" (case-insensitive) into *out
@@ -56,19 +63,19 @@ static bool parse_bool(const char *val, bool *out)
     return false;
 }
 
-// Callback for ConfigReader_Parse
+// Callback for ConfigReader_Parse using the metadata table
 static bool prefs_handler(const char *key, const char *value, void *userdata)
 {
     (void)userdata;
 
-    if(strcasecmp(key, "HIDE_MII") == 0)
-        parse_bool(value, &g_pref_hide_mii);
-    else if(strcasecmp(key, "HIDE_HOME") == 0)
-        parse_bool(value, &g_pref_hide_home);
-    else if(strcasecmp(key, "AUTO_START_AT_BOOT") == 0)
-        parse_bool(value, &g_pref_auto_start);
-    else if(strcasecmp(key, "ALLOW_UNSAFE") == 0)
-        parse_bool(value, &g_pref_allow_unsafe);
+    for(u32 i = 0; i < PREFS_COUNT; i++)
+    {
+        if(strcasecmp(key, g_user_prefs[i].key) == 0)
+        {
+            parse_bool(value, &g_pref_values[i]);
+            break;
+        }
+    }
 
     return true; // continue parsing
 }
@@ -76,10 +83,8 @@ static bool prefs_handler(const char *key, const char *value, void *userdata)
 Result UserPrefs_Load(void)
 {
     // Reset to defaults first
-    g_pref_hide_mii = false;
-    g_pref_hide_home = false;
-    g_pref_auto_start = false;
-    g_pref_allow_unsafe = false;
+    for(u32 i = 0; i < PREFS_COUNT; i++)
+        g_pref_values[i] = g_user_prefs[i].def;
 
     Result res = ConfigReader_Parse(USER_PREFS_PATH, prefs_handler, NULL);
     if(R_FAILED(res))
@@ -92,8 +97,10 @@ Result UserPrefs_Load(void)
     }
 
     g_prefs_loaded = true;
-    DiscordLog_Printf("[PREFS] Loaded: hide_mii=%d hide_home=%d auto_start=%d allow_unsafe=%d\n",
-        g_pref_hide_mii, g_pref_hide_home, g_pref_auto_start, g_pref_allow_unsafe);
+    DiscordLog_Printf("[PREFS] Loaded");
+    for(u32 i = 0; i < PREFS_COUNT; i++)
+        DiscordLog_Printf(" %s=%d", g_user_prefs[i].key, g_pref_values[i]);
+    DiscordLog_Printf("\n");
     return 0;
 }
 
@@ -115,15 +122,21 @@ Result UserPrefs_Save(void)
 
     // Build content in a buffer
     char buf[256];
-    int len = snprintf(buf, sizeof(buf),
-        "HIDE_MII=%s\n"
-        "HIDE_HOME=%s\n"
-        "AUTO_START_AT_BOOT=%s\n"
-        "ALLOW_UNSAFE=%s\n",
-        g_pref_hide_mii ? "true" : "false",
-        g_pref_hide_home ? "true" : "false",
-        g_pref_auto_start ? "true" : "false",
-        g_pref_allow_unsafe ? "true" : "false");
+    int len = 0;
+    int n = 0;
+    for(u32 i = 0; i < PREFS_COUNT && len < (int)sizeof(buf); i++)
+    {
+        n = snprintf(buf + len, sizeof(buf) - len, "%s=%s\n",
+                     g_user_prefs[i].key,
+                     g_pref_values[i] ? "true" : "false");
+        if(n < 0)
+        {
+            res = -1;
+            FSFILE_Close(fileHandle);
+            return res;
+        }
+        len += n;
+    }
 
     // Write to file
     u32 written;
@@ -136,7 +149,9 @@ Result UserPrefs_Save(void)
         return res;
     }
 
-    DiscordLog_Printf("[PREFS] Saved (%d bytes): hide_mii=%d hide_home=%d auto_start=%d allow_unsafe=%d\n",
-        len, g_pref_hide_mii, g_pref_hide_home, g_pref_auto_start, g_pref_allow_unsafe);
+    DiscordLog_Printf("[PREFS] Saved (%d bytes)", len);
+    for(u32 i = 0; i < PREFS_COUNT; i++)
+        DiscordLog_Printf(" %s=%d", g_user_prefs[i].key, g_pref_values[i]);
+    DiscordLog_Printf("\n");
     return 0;
 }

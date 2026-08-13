@@ -32,11 +32,30 @@
 
 #define USER_PREFS_PATH "/presence3ds/user_prefs.conf"
 
-// User preferences (default values applied automatically)
-extern bool g_pref_hide_mii;
-extern bool g_pref_hide_home;
-extern bool g_pref_auto_start;
-extern bool g_pref_allow_unsafe;
+// Identifier for each user preference (also used as index into g_user_prefs)
+typedef enum {
+    PREFS_HIDE_MII,
+    PREFS_HIDE_HOME,
+    PREFS_AUTO_START,
+    PREFS_ALLOW_UNSAFE,
+    PREFS_COUNT
+} UserPrefId;
+
+// Metadata describing a single user preference
+typedef struct {
+    const char *key;   // key in the config file (e.g. "HIDE_MII")
+    const char *label; // label shown in the menu (e.g. "Hide Mii in Presence")
+    bool         def;  // default value
+} UserPrefMeta;
+
+// One entry per preference
+
+// Metadatas of the preferences (key, label, default value)
+extern const UserPrefMeta g_user_prefs[PREFS_COUNT];
+
+// Values of the preferences (true/false)
+extern bool g_pref_values[PREFS_COUNT];
+
 extern bool g_prefs_loaded;
 
 // Load preferences from SD card (or apply defaults if file missing)

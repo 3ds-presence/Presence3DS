@@ -134,14 +134,14 @@ void DiscordMenu_Start(void)
     // If config is loaded and host is not the official one, check warning
     if(g_config_loaded && strcmp(g_server_host, "3ds-presence.top") != 0)
     {
-        if(!g_pref_allow_unsafe)
+        if(!g_pref_values[PREFS_ALLOW_UNSAFE])
         {
             int choice = DiscordMenu_ShowUnsafeWarning();
             if(choice == 0)
                 return; // Cancelled by user
             else if(choice == 2)
             {
-                g_pref_allow_unsafe = true;
+                g_pref_values[PREFS_ALLOW_UNSAFE] = true;
                 UserPrefs_Save(); // Persist the choice
             }
         }
@@ -259,8 +259,10 @@ void DiscordMenu_EditPrefs(void)
     // Load current prefs from SD
     UserPrefs_Load();
 
+    // Start on the first visible preference (label non-empty)
     int selection = 0;
-    const int num_prefs = 3;
+    while(g_user_prefs[selection].label[0] == '\0')
+        selection = (selection + 1) % PREFS_COUNT;
 
     do
     {
@@ -269,29 +271,23 @@ void DiscordMenu_EditPrefs(void)
         Draw_DrawString(10, 10, COLOR_TITLE, "User Preferences");
         Draw_DrawString(10, 22, COLOR_WHITE, "A: toggle   B: save & exit");
 
-        const char *labels[] = {
-            "Hide Mii in Presence",
-            "Hide Home activity",
-            "Auto-start at boot",
-        };
-        bool *values[] = {
-            &g_pref_hide_mii,
-            &g_pref_hide_home,
-            &g_pref_auto_start
-        };
-
-        for(int i = 0; i < num_prefs; i++)
+        u32 y = 40;
+        for(u32 i = 0; i < PREFS_COUNT; i++)
         {
-            u32 y = 40 + i * 20;
-            u32 color = (i == selection) ? RGB565(0x1F, 0x3F, 0x00) : COLOR_WHITE; // highlight selected
+            // Skip hidden preferences (empty label)
+            if(g_user_prefs[i].label[0] == '\0')
+                continue;
+
+            u32 color = (int)i == selection ? RGB565(0x1F, 0x3F, 0x00) : COLOR_WHITE; // highlight selected
 
             // Draw checkbox
-            if(*values[i])
+            if(g_pref_values[i])
                 Draw_DrawString(10, y, color, "[*]");
             else
                 Draw_DrawString(10, y, color, "[ ]");
 
-            Draw_DrawFormattedString(40, y, color, labels[i]);
+            Draw_DrawFormattedString(40, y, color, g_user_prefs[i].label);
+            y += 20;
         }
 
         Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Presence3DS %s", PRESENCE3DS_VERSION);
@@ -300,11 +296,17 @@ void DiscordMenu_EditPrefs(void)
 
         u32 pressed = waitInput();
         if(pressed & KEY_DOWN)
-            selection = (selection + 1) % num_prefs;
+        {
+            do { selection = (selection + 1) % PREFS_COUNT; }
+            while(g_user_prefs[selection].label[0] == '\0');
+        }
         else if(pressed & KEY_UP)
-            selection = (selection - 1 + num_prefs) % num_prefs;
+        {
+            do { selection = (selection - 1 + PREFS_COUNT) % PREFS_COUNT; }
+            while(g_user_prefs[selection].label[0] == '\0');
+        }
         else if(pressed & KEY_A)
-            *values[selection] = !*values[selection];
+            g_pref_values[selection] = !g_pref_values[selection];
         else if(pressed & KEY_B)
         {
             // Save and exit
@@ -363,11 +365,11 @@ void DiscordMenu_ShowAction(void)
         // Preferences
         posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE,
             "\nHide Mii: %s  Hide Home: %s\n",
-            g_pref_hide_mii ? "ON" : "OFF",
-            g_pref_hide_home ? "ON" : "OFF");
+            g_pref_values[PREFS_HIDE_MII] ? "ON" : "OFF",
+            g_pref_values[PREFS_HIDE_HOME] ? "ON" : "OFF");
         posY = Draw_DrawFormattedString(10, posY, COLOR_WHITE,
             "Auto-Start: %s\n",
-            g_pref_auto_start ? "ON" : "OFF");
+            g_pref_values[PREFS_AUTO_START] ? "ON" : "OFF");
 
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "\nPress B to go back.");
 

@@ -76,7 +76,6 @@ static const u8 smdh_lang_fallback[] = {
 };
 
 // Read the SMDH (icon section) from a title's ExeFS
-// Uses the same approach as FBI: ARCHIVE_SAVEDATA_AND_CONTENT with binary paths
 static Result read_smdh(u64 titleId, FS_MediaType mediaType, u8 *smdh_out)
 {
     Result res = 0;
@@ -164,7 +163,7 @@ static void extract_smdh_strings(const u8 *smdh,
             lang, desc[0], desc[1], desc[2], desc[3], desc[4], desc[5], desc[6], desc[7]);
     }
 
-    // 1. Try system language first
+    // Try system language first
     u8 cfgLang = CFG_LANGUAGE_EN;
     u8 smdhLang = 1; // English default
     if(R_SUCCEEDED(cfguInit()))
@@ -184,19 +183,11 @@ static void extract_smdh_strings(const u8 *smdh,
         return;
     }
 
-    // 2. Try English if different from system language
-    if(smdhLang != 1 && smdh_lang_has_name(smdh, 1))
-    {
-        smdh_copy_lang(smdh, 1, name_out, name_size, publisher_out, publisher_size);
-        DiscordLog_Printf("[DBG] Using English: name=%s pub=%s\n", name_out, publisher_out);
-        return;
-    }
-
-    // 3. Try all other languages in fallback order
+    // Fallback on fail
     for(u32 i = 0; i < sizeof(smdh_lang_fallback); i++)
     {
         u8 lang = smdh_lang_fallback[i];
-        if(lang == smdhLang || lang == 1) continue; // already tried
+        if(lang == smdhLang) continue; // already tried
         if(smdh_lang_has_name(smdh, lang))
         {
             smdh_copy_lang(smdh, lang, name_out, name_size, publisher_out, publisher_size);
@@ -228,15 +219,16 @@ static u64 get_current_app_info(FS_MediaType *outMediaType, u32 *outPid)
 }
 
 void create_activity_string(char* buffer, size_t buffer_size) {
-    char titleid[17];
+    char titleid[17] = "";
     char name[512] = "";
     char publisher[256] = "";
     char name_enc[1536] = "";
     char pub_enc[768] = "";
     char extra_buf[CUSTOMRPC_EXTRA_SIZE + 1] = "";
     char extra_enc[CUSTOMRPC_EXTRA_SIZE * 3] = "";
-    FS_MediaType mediaType = MEDIATYPE_SD;
-    u32 currentPid = 0;
+
+    FS_MediaType mediaType;
+    u32 currentPid;
 
     u64 tid = get_current_app_info(&mediaType, &currentPid);
     if(tid != 0)
@@ -268,10 +260,6 @@ void create_activity_string(char* buffer, size_t buffer_size) {
         if(CustomRPC_HasConfig())
         {
             CustomRPC_BuildExtraString(extra_buf, sizeof(extra_buf));
-            if(extra_buf[0])
-            {
-                discord_url_encode(extra_buf, extra_enc, sizeof(extra_enc));
-            }
         }
     }
     else
@@ -280,6 +268,7 @@ void create_activity_string(char* buffer, size_t buffer_size) {
         snprintf(name, sizeof(name), "Home Menu");
         snprintf(publisher, sizeof(publisher), "Nintendo");
         CustomRPC_UnmapPage();
+        CustomRPC_ClearConfig();
     }
 
     // URL-encode name and publisher to prevent '&', '=' etc. from breaking the query string
@@ -290,8 +279,9 @@ void create_activity_string(char* buffer, size_t buffer_size) {
              titleid, name_enc, pub_enc);
 
     // Append CustomRPC extra data if present
-    if(extra_enc[0])
+    if(extra_buf[0])
     {
+        discord_url_encode(extra_buf, extra_enc, sizeof(extra_enc));
         snprintf(buffer + strlen(buffer), buffer_size - strlen(buffer),
                  "&extra=%s", extra_enc);
     }

@@ -25,8 +25,8 @@
  */
 
 #include <string.h>
-#include <stdio.h>
 #include <3ds.h>
+#include "discord/utils/printf.h"
 #include "discord/utils/mii_utils.h"
 
 /*

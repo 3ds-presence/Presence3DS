@@ -264,7 +264,7 @@ static void handleShellNotification(u32 notificationId)
             s_wasDiscordActive = false;
             TaskRunner_RunTask(discord_rpc_start_task, NULL, 0);
         }
-        else if(!s_initialBootComplete && g_pref_auto_start && g_discord_state == DISCORD_STOPPED)
+        else if(!s_initialBootComplete && g_pref_values[PREFS_AUTO_START] && g_discord_state == DISCORD_STOPPED)
         {
             // First shell open at boot: auto-start Discord RPC if enabled.
             TaskRunner_RunTask(discord_rpc_start_task_boot, NULL, 0);
@@ -375,7 +375,7 @@ int main(void)
 
     // Load user preferences early so auto-start setting is available
     UserPrefs_Load();
-    DiscordLog_Printf("[INIT] Discord RPC ready (auto_start=%d)\n", g_pref_auto_start);
+    DiscordLog_Printf("[INIT] Discord RPC ready (auto_start=%d)\n", g_pref_values[PREFS_AUTO_START]);
 
     MyThread *menuThread = menuCreateThread();
     MyThread *taskRunnerThread = taskRunnerCreateThread();

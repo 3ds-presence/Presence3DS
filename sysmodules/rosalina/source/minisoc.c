@@ -184,7 +184,7 @@ Result miniSocExit(void)
 }
 
 // Abort soc:U to unblock any thread stuck in a synchronous IPC call.
-// Only closes the handle — does NOT free memory (the thread does that via miniSocExit).
+// Only closes the handle -> does NOT free memory (the thread does that via miniSocExit).
 void miniSocAbort(void)
 {
     if(miniSocHandle != 0)

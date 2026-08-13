@@ -27,6 +27,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <3ds/synchronization.h>
+#include "discord/utils/printf.h"
 #include "discord/discord_log.h"
 #include "fmt.h"
 
