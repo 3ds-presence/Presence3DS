@@ -179,7 +179,7 @@ void DiscordMenu_ReloadConfig(void)
         else
         {
             Draw_DrawString(10, 30, COLOR_RED, "Failed to load config!");
-            Draw_DrawString(10, 50, COLOR_WHITE, "Place /luma/discord_rpc.txt on SD.");
+            Draw_DrawString(10, 50, COLOR_WHITE, "Place /presence3ds/discord_rpc.conf on SD.");
         }
         Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Presence3DS %s", PRESENCE3DS_VERSION);
         Draw_FlushFramebuffer();
