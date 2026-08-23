@@ -52,6 +52,7 @@ LightLock g_discord_lock;
 static MyThread g_rpcThread;
 static u8 CTR_ALIGN(8) g_rpcThreadStack[0x4000];
 static volatile bool g_shouldStop;
+static volatile bool g_rpcStopping;
 static Handle g_rpcStartedEvent;
 
 // ---------------------------------------------------------------------------
@@ -253,6 +254,7 @@ void DiscordRPC_Start(void)
     }
 
     g_shouldStop = false;
+    g_rpcStopping = false;
 
     if(R_FAILED(svcCreateEvent(&g_rpcStartedEvent, RESET_STICKY)))
     {
@@ -278,6 +280,11 @@ void DiscordRPC_Start(void)
 
 void DiscordRPC_Stop(void)
 {
+    // Guard against concurrent calls 
+    if(g_rpcStopping)
+        return;
+    g_rpcStopping = true;
+
     DiscordLog_Printf("[CMD] Stopping...\n");
     g_shouldStop = true;
 
@@ -301,6 +308,7 @@ void DiscordRPC_Init(void)
 {
     LightLock_Init(&g_discord_lock);
     g_shouldStop = false;
+    g_rpcStopping = false;
     g_counter = 0;
     CustomRPC_Init();
     DiscordLog_Printf("[INIT] Discord RPC ready\n");

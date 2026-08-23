@@ -295,7 +295,11 @@ ProcessData *terminateAllProcesses(u32 callerPid, s64 timeout)
 
     // Send custom notification to at least Rosalina to make it relinquish some non-KIP services handles, stop the debugger, etc.
     if (numKips >= 6) {
+        svcClearEvent(g_manager.preTermDoneEvent);
         notifySubscribers(0x2000);
+        // Wait for Rosalina to finish its cleanup (Discord RPC logout, etc.)
+        // before we kill any processes that hold network services.
+        svcWaitSynchronization(g_manager.preTermDoneEvent, 10LL * 1000 * 1000 * 1000);
     }
 
     // Send notification 0x100 to the currently running application

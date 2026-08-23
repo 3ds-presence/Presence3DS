@@ -28,6 +28,7 @@ void Manager_Init(void *procBuf, size_t numProc)
     ProcessList_Init(&g_manager.processList, procBuf, numProc);
     assertSuccess(svcCreateEvent(&g_manager.newProcessEvent, RESET_ONESHOT));
     assertSuccess(svcCreateEvent(&g_manager.allNotifiedTerminationEvent , RESET_ONESHOT));
+    assertSuccess(svcCreateEvent(&g_manager.preTermDoneEvent, RESET_STICKY));
 }
 
 void Manager_RegisterKips(void)

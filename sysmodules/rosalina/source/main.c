@@ -289,6 +289,15 @@ static void handlePreTermNotification(u32 notificationId)
     (void)notificationId;
     // Might be subject to a race condition, but heh.
 
+    // Stop Discord RPC cleanly while network is still available.
+    // PM will wait for us (via notification 0x2001) before killing network services.
+    if(g_discord_state != DISCORD_STOPPED)
+        DiscordRPC_Stop();
+
+    // Signal PM that we're done with network-dependent cleanup.
+    // If Discord RPC was never started, signal immediately.
+    srvPublishToSubscriber(0x2001, 0);
+
     miniSocUnlockState(true);
 
     // Disable input redirection

@@ -10,6 +10,7 @@ typedef struct Manager {
     Handle reslimits[4];
     Handle newProcessEvent;
     Handle allNotifiedTerminationEvent;
+    Handle preTermDoneEvent;
     bool waitingForTermination;
     bool preparingForReboot;
     u8 maxAppCpuTime;

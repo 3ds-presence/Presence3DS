@@ -70,8 +70,15 @@ static void handleRestartHbAppNotification(u32 notificationId)
     ChainloadHomebrewDirty();
 }
 
+static void handlePreTermDoneNotification(u32 notificationId)
+{
+    (void)notificationId;
+    svcSignalEvent(g_manager.preTermDoneEvent);
+}
+
 static const ServiceManagerNotificationEntry notifications[] = {
     { 0x3000, handleRestartHbAppNotification },
+    { 0x2001, handlePreTermDoneNotification },
     { 0x0000, NULL },
 };
 
