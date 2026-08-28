@@ -33,6 +33,7 @@
 #include "discord/discord_rpc_main.h"
 #include "discord/discord_log.h"
 #include "discord/discord_config.h"
+#include "discord/discord_update.h"
 #include "discord/user_prefs.h"
 
 static bool discordMenuIsStopped(void)
@@ -43,6 +44,20 @@ static bool discordMenuIsStopped(void)
 static bool discordMenuIsNotStopped(void)
 {
     return g_discord_state != DISCORD_STOPPED;
+}
+
+void DiscordMenu_DrawVersionFooter(u32 x, u32 y)
+{
+    if(DiscordUpdate_Available())
+    {
+        Draw_DrawFormattedString(x, y, COLOR_RED,
+            "Presence3DS %s - Upd avail", PRESENCE3DS_VERSION);
+    }
+    else
+    {
+        Draw_DrawFormattedString(x, y, COLOR_TITLE,
+            "Presence3DS %s             ", PRESENCE3DS_VERSION);
+    }
 }
 
 Menu discordMenu = {
@@ -88,8 +103,7 @@ static int DiscordMenu_ShowUnsafeWarning(void)
         y = Draw_DrawString(10, y, COLOR_WHITE,
             "Y - Launch and don't show this again");
 
-        Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE,
-            "Presence3DS %s", PRESENCE3DS_VERSION);
+        DiscordMenu_DrawVersionFooter(10, SCREEN_BOT_HEIGHT - 20);
         Draw_FlushFramebuffer();
         Draw_Unlock();
 
@@ -181,7 +195,7 @@ void DiscordMenu_ReloadConfig(void)
             Draw_DrawString(10, 30, COLOR_RED, "Failed to load config!");
             Draw_DrawString(10, 50, COLOR_WHITE, "Place /presence3ds/discord_rpc.conf on SD.");
         }
-        Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Presence3DS %s", PRESENCE3DS_VERSION);
+        DiscordMenu_DrawVersionFooter(10, SCREEN_BOT_HEIGHT - 20);
         Draw_FlushFramebuffer();
         Draw_Unlock();
     }
@@ -290,7 +304,7 @@ void DiscordMenu_EditPrefs(void)
             y += 20;
         }
 
-        Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Presence3DS %s", PRESENCE3DS_VERSION);
+        DiscordMenu_DrawVersionFooter(10, SCREEN_BOT_HEIGHT - 20);
         Draw_FlushFramebuffer();
         Draw_Unlock();
 
@@ -373,7 +387,7 @@ void DiscordMenu_ShowAction(void)
 
         posY = Draw_DrawString(10, posY, COLOR_WHITE, "\nPress B to go back.");
 
-        Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Presence3DS %s", PRESENCE3DS_VERSION);
+        DiscordMenu_DrawVersionFooter(10, SCREEN_BOT_HEIGHT - 20);
         Draw_FlushFramebuffer();
         Draw_Unlock();
     }

@@ -55,18 +55,36 @@ void discord_url_encode(const char *src, char *dst, u32 dst_size)
     dst[di] = '\0';
 }
 
+// Parse a field from form-url-encoded response (e.g. "key=value&...")
+// Only whole keys are matched: searching "ver" will not match "server=...".
+// Returns true if field was found and value is non-empty
 bool discord_parse_field(const char *resp, const char *field, char *value, u32 max_len)
 {
-    const char *p = strstr(resp, field);
-    if(!p) return false;
-    p += strlen(field);
-    if(*p != '=') return false;
-    p++;
-    u32 i;
-    for(i = 0; i < max_len - 1 && p[i] && p[i] != '&' && p[i] != '\r' && p[i] != '\n'; i++)
-        value[i] = p[i];
-    value[i] = '\0';
-    return i > 0;
+    size_t flen = strlen(field);
+    const char *p = resp;
+
+    while((p = strstr(p, field)) != NULL)
+    {
+        // Must start at a key boundary: start of response or right after
+        // a separator ('&', newline). Otherwise it's part of another key.
+        bool boundary = (p == resp || p[-1] == '&' || p[-1] == '\n' || p[-1] == '\r');
+        p += flen;
+
+        if(!boundary)
+            continue;
+
+        if(*p == '=')
+        {
+            p++;
+            u32 i;
+            for(i = 0; i < max_len - 1 && p[i] && p[i] != '&' && p[i] != '\r' && p[i] != '\n'; i++)
+                value[i] = p[i];
+            value[i] = '\0';
+            return i > 0;
+        }
+    }
+
+    return false;
 }
 
 void discord_pack_counter(u64 counter, u8 buf[8])

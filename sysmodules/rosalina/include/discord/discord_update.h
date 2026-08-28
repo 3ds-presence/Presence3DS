@@ -26,14 +26,11 @@
 
 #pragma once
 
-#include "menu.h"
+#include <3ds/types.h>
 
-extern Menu discordMenu;
+#define DISCORD_UPD_PATH "/presence3ds/.upd"
 
-void DiscordMenu_Start(void);
-void DiscordMenu_Stop(void);
-void DiscordMenu_ViewLog(void);
-void DiscordMenu_ReloadConfig(void);
-void DiscordMenu_EditPrefs(void);
-void DiscordMenu_ShowAction(void);
-void DiscordMenu_DrawVersionFooter(u32 x, u32 y);
+void DiscordUpdate_Init(void);
+bool DiscordUpdate_CheckRemote(const char *ver);
+bool DiscordUpdate_Available(void);
+int DiscordUpdate_CompareVersions(const char *a, const char *b);

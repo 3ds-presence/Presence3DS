@@ -35,6 +35,7 @@
 #include "menu.h"
 #include "discord/discord_rpc_main.h"
 #include "discord/discord_config.h"
+#include "discord/discord_update.h"
 #include "discord/user_prefs.h"
 #include "discord/discord_session.h"
 #include "discord/discord_log.h"
@@ -360,5 +361,8 @@ void DiscordRPC_Init(void)
     g_rpcStopping = false;
     g_counter = 0;
     CustomRPC_Init();
+    // Check /presence3ds/.upd: clears the marker if the update was installed,
+    // keeps the "Upd avail" flag otherwise
+    DiscordUpdate_Init();
     DiscordLog_Printf("[INIT] Discord RPC ready\n");
 }

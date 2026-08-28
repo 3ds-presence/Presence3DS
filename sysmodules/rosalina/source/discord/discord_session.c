@@ -110,6 +110,11 @@ int discord_login(void)
 
     g_counter = strtoull(nonce, NULL, 10);
     DiscordLog_Printf("[AUTH] Nonce=%llu\n", g_counter);
+
+    char ver[32];
+    if(discord_parse_field(resp, "ver", ver, sizeof(ver)))
+        DiscordUpdate_CheckRemote(ver);
+
     return 0;
 }
 

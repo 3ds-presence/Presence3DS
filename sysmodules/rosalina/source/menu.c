@@ -508,7 +508,7 @@ static void menuDraw(Menu *menu, u32 selected)
 
     if(menu == &discordMenu)
     {
-        Draw_DrawFormattedString(10, SCREEN_BOT_HEIGHT - 20, COLOR_TITLE, "Presence3DS %s", PRESENCE3DS_VERSION);
+        DiscordMenu_DrawVersionFooter(10, SCREEN_BOT_HEIGHT - 20);
     }
     else if(isRelease)
     {
