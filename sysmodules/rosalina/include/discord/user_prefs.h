@@ -37,6 +37,7 @@ typedef enum {
     PREFS_HIDE_MII,
     PREFS_HIDE_HOME,
     PREFS_AUTO_START,
+    PREFS_FORCE_ENGLISH,
     PREFS_ALLOW_UNSAFE,
     PREFS_COUNT
 } UserPrefId;
@@ -45,7 +46,7 @@ typedef enum {
 typedef struct {
     const char *key;   // key in the config file (e.g. "HIDE_MII")
     const char *label; // label shown in the menu (e.g. "Hide Mii in Presence")
-    bool         def;  // default value
+    bool        def;   // default value
 } UserPrefMeta;
 
 // One entry per preference

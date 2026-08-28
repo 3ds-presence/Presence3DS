@@ -34,6 +34,7 @@
 #include "discord/discord_log.h"
 #include "discord/customRPC/read_memory.h"
 #include "discord/customRPC/memory_config.h"
+#include "discord/user_prefs.h"
 #include "pmdbgext.h"
 
 #define SMDH_READ_SIZE  0x36C0
@@ -156,17 +157,17 @@ static void extract_smdh_strings(const u8 *smdh,
     publisher_out[0] = '\0';
 
     // Debug: dump short desc of all 8 SMDH languages (first 8 UTF-16 chars each)
-    for(u32 lang = 0; lang < 8; lang++)
-    {
-        const u16 *desc = (const u16 *)(smdh + SMDH_TITLES_OFFSET + lang * SMDH_TITLE_ENTRY_SIZE + SMDH_SHORT_DESC_OFFSET);
-        DiscordLog_Printf("[DBG] L%d:%04X%04X%04X%04X%04X%04X%04X%04X\n",
-            lang, desc[0], desc[1], desc[2], desc[3], desc[4], desc[5], desc[6], desc[7]);
-    }
+    // for(u32 lang = 0; lang < 8; lang++)
+    // {
+    //     const u16 *desc = (const u16 *)(smdh + SMDH_TITLES_OFFSET + lang * SMDH_TITLE_ENTRY_SIZE + SMDH_SHORT_DESC_OFFSET);
+    //     DiscordLog_Printf("[DBG] L%d:%04X%04X%04X%04X%04X%04X%04X%04X\n",
+    //         lang, desc[0], desc[1], desc[2], desc[3], desc[4], desc[5], desc[6], desc[7]);
+    // }
 
     // Try system language first
     u8 cfgLang = CFG_LANGUAGE_EN;
     u8 smdhLang = 1; // English default
-    if(R_SUCCEEDED(cfguInit()))
+    if(!g_pref_values[PREFS_FORCE_ENGLISH] && R_SUCCEEDED(cfguInit()))
     {
         CFGU_GetSystemLanguage(&cfgLang);
         cfguExit();
