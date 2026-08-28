@@ -35,8 +35,9 @@
 extern u64 g_counter;
 extern bool active_session;
 
-// Returns true on success
-bool discord_login(void);
+// Login to the server.
+// Returns 0=OK, 1=refused by server (success=false), 2=network error
+int discord_login(void);
 
 // Returns true on success
 bool discord_verify(const char *data);

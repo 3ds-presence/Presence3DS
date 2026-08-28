@@ -32,6 +32,7 @@
 #include "discord/discord_config.h"
 #include "discord/utils/aes256_cbc.h"
 #include "discord/discord_http.h"
+#include "discord/discord_update.h"
 #include "discord/utils/discord_util.h"
 #include "discord/discord_log.h"
 #include "discord/utils/sha256.h"
@@ -80,7 +81,8 @@ static void build_auth(const u8 key[32], const char *msg, u64 counter,
 //  Public API
 // ---------------------------------------------------------------------------
 
-bool discord_login(void)
+// Returns 0=OK, 1=refused by server (success=false), 2=network error
+int discord_login(void)
 {
     char body[128];
     char resp[512];
@@ -90,15 +92,25 @@ bool discord_login(void)
 
     int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "login",
                               body, NULL, resp, sizeof(resp), 0);
-    if(r < 0 || !discord_parse_field(resp, "nonce", nonce, sizeof(nonce)))
+    if(r < 0)
     {
-        DiscordLog_Printf("[ERR] Login failed\n");
-        return false;
+        DiscordLog_Printf("[ERR] Login failed (network, r=%d)\n", r);
+        return 2;
+    }
+
+    if(!discord_parse_field(resp, "nonce", nonce, sizeof(nonce)))
+    {
+        char err[64];
+        if(discord_parse_field(resp, "error", err, sizeof(err)))
+            DiscordLog_Printf("[ERR] Login refused by server: %s\n", err);
+        else
+            DiscordLog_Printf("[ERR] Login refused by server (no nonce)\n");
+        return 1;
     }
 
     g_counter = strtoull(nonce, NULL, 10);
     DiscordLog_Printf("[AUTH] Nonce=%llu\n", g_counter);
-    return true;
+    return 0;
 }
 
 bool discord_verify(const char *data)
