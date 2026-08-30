@@ -141,8 +141,17 @@ static void upd_write_file(const char *ver)
 
 static void upd_delete_file(void)
 {
-    Result res = FSUSER_DeleteFile(ARCHIVE_SDMC,
-        fsMakePath(PATH_ASCII, DISCORD_UPD_PATH));
+    FS_Archive sd;
+    Result res = FSUSER_OpenArchive(&sd, ARCHIVE_SDMC, fsMakePath(PATH_EMPTY, ""));
+    if(R_FAILED(res))
+    {
+        DiscordLog_Printf("[UPD] Can't open SDMC to remove marker (0x%08lx)\n", (u32)res);
+        return;
+    }
+
+    res = FSUSER_DeleteFile(sd, fsMakePath(PATH_ASCII, DISCORD_UPD_PATH));
+    FSUSER_CloseArchive(sd);
+
     if(R_SUCCEEDED(res))
         DiscordLog_Printf("[UPD] Marker removed (update installed)\n");
 }
