@@ -29,11 +29,17 @@
 #include <3ds/types.h>
 #include <stddef.h>
 
-#define CUSTOMRPC_CONFIG_PATH  "/presence3ds/rpc"
 #define CUSTOMRPC_MAX_ENTRIES  32
 #define CUSTOMRPC_EXTRA_SIZE   1024
 
-bool CustomRPC_LoadConfigForTitle(u64 titleId);
+// Load config entries from a server-provided string ("AAAAAAAAx,...").
+// Marks the title as tried even when no valid entry is found (e.g. "-").
+bool CustomRPC_LoadConfigFromString(u64 titleId, const char *data);
 bool CustomRPC_HasConfig(void);
+bool CustomRPC_TriedForTitle(u64 titleId);
+
+// Mark a title as already attempted
+void CustomRPC_MarkTried(u64 titleId);
+
 void CustomRPC_BuildExtraString(char *extra_out, size_t extra_size);
 void CustomRPC_ClearConfig(void);

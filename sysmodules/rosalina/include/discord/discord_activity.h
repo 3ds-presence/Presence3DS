@@ -27,4 +27,16 @@
 #pragma once
 
 #include <3ds/types.h>
-void create_activity_string(char* buffer, size_t buffer_size);
+#include <3ds/services/fs.h>
+
+// One activity loop iteration:
+// - query the current title
+// - fetch the server-side script for it if needed
+// - build the activity string.
+// Returns 0 on success, non-zero when the script fetch failed
+int discord_activity_tick(char *buffer, size_t buffer_size);
+
+// Builds the activity string from the given title (SMDH name/publisher) and
+// the CustomRPC memory values.
+void create_activity_string(char* buffer, size_t buffer_size,
+                            u64 tid, FS_MediaType mediaType, u32 pid);

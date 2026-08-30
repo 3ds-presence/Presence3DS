@@ -187,34 +187,41 @@ void DiscordRPC_ThreadMain(void)
         while(!g_shouldStop)
         {
             char data[5500];
-            create_activity_string(data, sizeof(data));
-
-            // Compute SHA-256 hash of the activity data for change detection
-            u8 current_hash[32];
-            SHA256_CTX sha;
-            sha256_init(&sha);
-            sha256_update(&sha, (const u8 *)data, strlen(data));
-            sha256_final(&sha, current_hash);
-
             int ret = -1;
-            if (memcmp(current_hash, prev_hash, 32) != 0)
+
+            if(discord_activity_tick(data, sizeof(data)) != 0)
             {
-                memcpy(prev_hash, current_hash, 32);
-                DiscordLog_Printf("[THREAD] Activity changed: %s\n", data);
-                // If HIDE_HOME is enabled and we're on Home Menu
-                if(g_pref_values[PREFS_HIDE_HOME])
+                DiscordLog_Printf("[THREAD] Activity build failed, reconnecting\n");
+                ret = 2;
+            }
+            else
+            {
+                // Compute SHA-256 hash of the activity data for change detection
+                u8 current_hash[32];
+                SHA256_CTX sha;
+                sha256_init(&sha);
+                sha256_update(&sha, (const u8 *)data, strlen(data));
+                sha256_final(&sha, current_hash);
+
+                if (memcmp(current_hash, prev_hash, 32) != 0)
                 {
-                    // Check if title ID is all zeros (Home Menu)
-                    const char *tid_field = strstr(data, "titleid=0000000000000000");
-                    if(tid_field)
+                    memcpy(prev_hash, current_hash, 32);
+                    DiscordLog_Printf("[THREAD] Activity changed: %s\n", data);
+                    // If HIDE_HOME is enabled and we're on Home Menu
+                    if(g_pref_values[PREFS_HIDE_HOME])
                     {
-                        data[0] = '\0'; // Clear activity data to hide it
+                        // Check if title ID is all zeros (Home Menu)
+                        const char *tid_field = strstr(data, "titleid=0000000000000000");
+                        if(tid_field)
+                        {
+                            data[0] = '\0'; // Clear activity data to hide it
+                        }
                     }
+                    ret = discord_activity_update(data);
+                } else {
+                    // No change in activity, just send a heartbeat
+                    ret = discord_activity_heartbeat();
                 }
-                ret = discord_activity_update(data);
-            } else {
-                // No change in activity, just send a heartbeat
-                ret = discord_activity_heartbeat();
             }
 
             switch(ret) {

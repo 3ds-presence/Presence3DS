@@ -32,6 +32,7 @@
 
 #include "discord/discord_activity.h"
 #include "discord/discord_log.h"
+#include "discord/discord_session.h"
 #include "discord/customRPC/read_memory.h"
 #include "discord/customRPC/memory_config.h"
 #include "discord/user_prefs.h"
@@ -219,7 +220,73 @@ static u64 get_current_app_info(FS_MediaType *outMediaType, u32 *outPid)
     return titleId;
 }
 
-void create_activity_string(char* buffer, size_t buffer_size) {
+// Fetch CustomRPC script for a title if not already fetched. 
+// "-": no script to fetch
+// Returns 0 on success, non-zero on error.
+static int fetch_script_for_title(u64 tid)
+{
+    if(tid == 0)
+    {
+        CustomRPC_UnmapPage();
+        CustomRPC_ClearConfig();
+        return 0;
+    }
+
+    if(!CustomRPC_TriedForTitle(tid))
+    {
+        CustomRPC_ClearConfig();
+
+        char code[CUSTOMRPC_EXTRA_SIZE];
+        int script_res = discord_get_script(tid, code, sizeof(code));
+        if(script_res != 0)
+        {
+            CustomRPC_ClearConfig();
+            DiscordLog_Printf("[RPC] Script fetch failed for %016llX (r=%d)\n",
+                              tid, script_res);
+            return -1;
+        }
+
+        // "-" (or empty) = the server has no script for this title: nothing
+        // to load, but remember it so we don't refetch on every iteration.
+        if(code[0] == '-' || code[0] == '\0')
+        {
+            DiscordLog_Printf("[RPC] No code for %016llX\n", tid);
+            CustomRPC_MarkTried(tid);
+            return 0;
+        }
+
+        CustomRPC_LoadConfigFromString(tid, code);
+    }
+
+    return 0;
+}
+
+// One activity loop iteration: query the current title once, fetch the
+// server-side script for it if needed, then build the activity string.
+// Returns 0 on success, non-zero when the script fetch failed so the
+// activity loop can fall back to reconnection.
+int discord_activity_tick(char *buffer, size_t buffer_size)
+{
+    FS_MediaType mediaType;
+    u32 pid;
+    u64 tid = get_current_app_info(&mediaType, &pid);
+
+    if (!g_pref_values[PREFS_DISABLE_CUSTOMRPC]) {
+        int fetch_res = fetch_script_for_title(tid);
+        if(fetch_res != 0)
+            return fetch_res;
+    } else {
+        CustomRPC_UnmapPage();
+        CustomRPC_ClearConfig();
+    }
+    
+    create_activity_string(buffer, buffer_size, tid, mediaType, pid);
+    return 0;
+}
+
+// Builds the activity string from the given title (SMDH name/publisher) and
+// the CustomRPC memory values. Does no network I/O.
+void create_activity_string(char* buffer, size_t buffer_size, u64 tid, FS_MediaType mediaType, u32 currentPid) {
     char titleid[17] = "";
     char name[512] = "";
     char publisher[256] = "";
@@ -228,10 +295,6 @@ void create_activity_string(char* buffer, size_t buffer_size) {
     char extra_buf[CUSTOMRPC_EXTRA_SIZE + 1] = "";
     char extra_enc[CUSTOMRPC_EXTRA_SIZE * 3] = "";
 
-    FS_MediaType mediaType;
-    u32 currentPid;
-
-    u64 tid = get_current_app_info(&mediaType, &currentPid);
     if(tid != 0)
     {
         snprintf(titleid, sizeof(titleid), "%016llX", tid);
@@ -248,12 +311,11 @@ void create_activity_string(char* buffer, size_t buffer_size) {
             DiscordLog_Printf("[DBG] Could not read SMDH for %016llX\n", tid);
         }
 
-        // CustomRPC: manage page mapping and config based on PID
         if(CustomRPC_GetMappedPid() != currentPid)
         {
             CustomRPC_UnmapPage();
-            CustomRPC_ClearConfig();
-            if(CustomRPC_LoadConfigForTitle(tid))
+
+            if(CustomRPC_HasConfig())
                 CustomRPC_MapPage(currentPid);
         }
 

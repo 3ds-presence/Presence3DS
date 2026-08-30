@@ -39,6 +39,7 @@ const UserPrefMeta g_user_prefs[PREFS_COUNT] = {
     [PREFS_HIDE_HOME]    = { "HIDE_HOME",          "Hide Home activity",   false },
     [PREFS_AUTO_START]   = { "AUTO_START_AT_BOOT", "Auto-start at boot",   false },
     [PREFS_FORCE_ENGLISH] = { "FORCE_ENGLISH",     "Force English name of the game", false },
+    [PREFS_DISABLE_CUSTOMRPC] = { "DISABLE_CUSTOMRPC", "Disable displaying game state", false },
     [PREFS_ALLOW_UNSAFE] = { "ALLOW_UNSAFE",       "",                     false },
 };
 

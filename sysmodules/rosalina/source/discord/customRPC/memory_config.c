@@ -52,72 +52,28 @@ static u64 g_loaded_titleid; // 0 = no config loaded for current title
 static bool g_tried;         // true if we already attempted to load for this titleId
 
 // ---------------------------------------------------------------------------
-//  Public API
+//  Internal helpers
 // ---------------------------------------------------------------------------
 
-bool CustomRPC_LoadConfigForTitle(u64 titleId)
+// Parse "AAAAAAAAx" entries (8 hex digits + type b/h/w) separated by ',' or
+// whitespace into g_entries. buf is modified in place.
+static void parse_entries(char *buf)
 {
-    // If we already attempted (success or fail) for this title, don't re-read
-    if (g_tried && g_loaded_titleid == titleId)
-        return g_entry_count > 0;
-
-    // Reset any previous state
-    CustomRPC_ClearConfig();
-
-    Result res;
-    Handle fileHandle;
-    char path[64];
-    char buf[CUSTOMRPC_EXTRA_SIZE];
-
-    snprintf(path, sizeof(path), CUSTOMRPC_CONFIG_PATH "/%016llX.txt", titleId);
-
-    DiscordLog_Printf("[RPC] Loading memory config: %s\n", path);
-
-    res = FSUSER_OpenFileDirectly(&fileHandle, ARCHIVE_SDMC,
-                                  fsMakePath(PATH_EMPTY, ""),
-                                  fsMakePath(PATH_ASCII, path),
-                                  FS_OPEN_READ, 0);
-    if (R_FAILED(res))
-    {
-        DiscordLog_Printf("[RPC] No config for %016llX (0x%08lX)\n", titleId, (u32)res);
-        g_loaded_titleid = titleId;
-        g_tried = true;
-        return false;
-    }
-
-    // Read file content
-    u32 bytesRead;
-    res = FSFILE_Read(fileHandle, &bytesRead, 0, buf, sizeof(buf) - 1);
-    FSFILE_Close(fileHandle);
-
-    if (R_FAILED(res) || bytesRead == 0)
-    {
-        DiscordLog_Printf("[RPC] Config read failed for %016llX\n", titleId);
-        g_loaded_titleid = titleId;
-        g_tried = true;
-        return false;
-    }
-
-    buf[bytesRead] = '\0';
-
-    DiscordLog_Printf("[RPC] Config (%u bytes): %s\n", bytesRead, buf);
-
-    // Parse tokens separated by ',' : "AAAAAAAAx" where A=8 hex digits, x=type (b/h/w)
     char *saveptr = NULL;
-    for (char *token = strtok_r(buf, ",\t\r\n ", &saveptr);
-         token && g_entry_count < CUSTOMRPC_MAX_ENTRIES;
-         token = strtok_r(NULL, ",\t\r\n ", &saveptr))
+    for(char *token = strtok_r(buf, ",\t\r\n ", &saveptr);
+        token && g_entry_count < CUSTOMRPC_MAX_ENTRIES;
+        token = strtok_r(NULL, ",\t\r\n ", &saveptr))
     {
-        if (strlen(token) != 9) // exactly 8 hex digits + type letter
+        if(strlen(token) != 9) // exactly 8 hex digits + type letter
             continue;
 
         char type = token[8];
-        if (type != 'b' && type != 'h' && type != 'w')
+        if(type != 'b' && type != 'h' && type != 'w')
             continue;
 
         token[8] = '\0';
         u32 addr = (u32)strtoul(token, NULL, 16);
-        if (addr == 0)
+        if(addr == 0)
             continue;
 
         // Store valid entry
@@ -125,23 +81,55 @@ bool CustomRPC_LoadConfigForTitle(u64 titleId)
         g_entries[g_entry_count].type = type;
         g_entry_count++;
     }
+}
+
+// ---------------------------------------------------------------------------
+//  Public API
+// ---------------------------------------------------------------------------
+
+bool CustomRPC_LoadConfigFromString(u64 titleId, const char *data)
+{
+    char buf[CUSTOMRPC_EXTRA_SIZE];
+
+    CustomRPC_ClearConfig();
+
+    if(data == NULL)
+        return false;
+
+    strncpy(buf, data, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = '\0';
+
+    DiscordLog_Printf("[RPC] Server code (%u bytes): %s\n", (u32)strlen(buf), buf);
+    parse_entries(buf);
 
     g_loaded_titleid = titleId;
     g_tried = true;
 
-    if (g_entry_count > 0)
+    if(g_entry_count > 0)
     {
-        DiscordLog_Printf("[RPC] Loaded %d address(es) for %016llX\n", g_entry_count, titleId);
+        DiscordLog_Printf("[RPC] Loaded %d server address(es) for %016llX\n",
+                          g_entry_count, titleId);
         return true;
     }
 
-    DiscordLog_Printf("[RPC] No valid entries in config for %016llX\n", titleId);
+    DiscordLog_Printf("[RPC] No valid entries in server code for %016llX\n", titleId);
     return false;
 }
 
 bool CustomRPC_HasConfig(void)
 {
     return g_tried && g_entry_count > 0 && g_loaded_titleid != 0;
+}
+
+bool CustomRPC_TriedForTitle(u64 titleId)
+{
+    return g_tried && g_loaded_titleid == titleId;
+}
+
+void CustomRPC_MarkTried(u64 titleId)
+{
+    g_tried = true;
+    g_loaded_titleid = titleId;
 }
 
 void CustomRPC_BuildExtraString(char *extra_out, size_t extra_size)

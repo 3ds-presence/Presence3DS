@@ -77,6 +77,15 @@ static void build_auth(const u8 key[32], const char *msg, u64 counter,
     aes256_cbc_encrypt_to_hex(auth_buf, 40, key, zero_iv, auth_hex, NULL);
 }
 
+// Compare two buffers of fixed length without early exit (constant-time).
+static bool ct_equal(const u8 *a, const u8 *b, u32 len)
+{
+    u8 diff = 0;
+    for(u32 i = 0; i < len; i++)
+        diff |= (u8)(a[i] ^ b[i]);
+    return diff == 0;
+}
+
 // ---------------------------------------------------------------------------
 //  Public API
 // ---------------------------------------------------------------------------
@@ -159,6 +168,64 @@ bool discord_verify(const char *data)
 
     DiscordLog_Printf("[ERR] Verify failed\n");
     return false;
+}
+
+int discord_get_script(u64 titleid, char *code_out, u32 code_size)
+{
+    u8 key[32];
+    char auth_hex[97];
+    char msg[64];
+    char body[256];
+    char resp[512];
+    char sig_hex[97];
+    char check_msg[512];
+
+    decode_aes_key(key);
+
+    // Request: same envelope as activity/set, signed with the current counter
+    snprintf(msg, sizeof(msg), "titleid=%016llX", titleid);
+    build_auth(key, msg, g_counter, auth_hex);
+
+    snprintf(body, sizeof(body), "uuid=%s&auth_hex=%s&titleid=%016llX",
+             g_uuid, auth_hex, titleid);
+
+    int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "script",
+                              body, NULL, resp, sizeof(resp), 0);
+    if(r < 0)
+    {
+        DiscordLog_Printf("[ERR] Script fetch failed (network, r=%d)\n", r);
+        return 2;
+    }
+
+    if(!discord_parse_field(resp, "code", code_out, code_size) ||
+       !discord_parse_field(resp, "sig_hex", sig_hex, sizeof(sig_hex)))
+    {
+        char err[64];
+        if(discord_parse_field(resp, "error", err, sizeof(err)))
+            DiscordLog_Printf("[ERR] Script request refused: %s\n", err);
+        else
+            DiscordLog_Printf("[ERR] Script response missing code/sig_hex\n");
+        return -1;
+    }
+
+    // Verify the response BEFORE consuming the tick: sig_hex authenticates
+    // "titleid=<TITLEID>&code=<code>" for the current counter.
+    snprintf(check_msg, sizeof(check_msg), "titleid=%016llX&code=%s",
+             titleid, code_out);
+    build_auth(key, check_msg, g_counter, auth_hex);
+
+    if(strlen(sig_hex) != 96 ||
+       !ct_equal((const u8 *)auth_hex, (const u8 *)sig_hex, 96))
+    {
+        DiscordLog_Printf("[ERR] Script signature invalid for %016llX\n", titleid);
+        return 1;
+    }
+
+    // Signature verified: the server consumed one tick.
+    g_counter++;
+    DiscordLog_Printf("[SCRIPT] Code for %016llX: %s (counter=%llu)\n",
+                      titleid, code_out, g_counter);
+    return 0;
 }
 
 int discord_activity_update(char* data)

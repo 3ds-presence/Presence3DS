@@ -39,6 +39,12 @@ extern bool active_session;
 // Returns 0=OK, 1=refused by server (success=false), 2=network error
 int discord_login(void);
 
+// Fetch the server-side RAM address code (code.txt) for a title.
+// On success fills code_out with the code ("-" when the server has none)
+// and consumes one protocol tick.
+// Returns 0=OK, 1=invalid signature, 2=network error, -1=server error
+int discord_get_script(u64 titleid, char *code_out, u32 code_size);
+
 // Returns true on success
 bool discord_verify(const char *data);
 
