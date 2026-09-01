@@ -204,22 +204,26 @@ void DiscordMenu_ReloadConfig(void)
 
 void DiscordMenu_ViewLog(void)
 {
-    char *logBuf = DiscordLog_GetBuffer();
     u32 scrollPos = 0;
     u32 lineCount = 0;
-    u32 displayLines = 20; // How many lines fit on screen
-
-    // Count lines roughly
-    char *p = logBuf;
-    while(*p)
-    {
-        if(*p == '\n')
-            lineCount++;
-        p++;
-    }
+    u32 displayLines = 19; // How many lines fit on screen
 
     do
     {
+        // Fetch the (linearized) buffer on every refresh so new log lines
+        // written while this menu is open are picked up
+        char *logBuf = DiscordLog_GetBuffer();
+
+        // Count lines roughly
+        lineCount = 0;
+        char *p = logBuf;
+        while(*p)
+        {
+            if(*p == '\n')
+                lineCount++;
+            p++;
+        }
+
         Draw_Lock();
         Draw_ClearFramebuffer();
         Draw_DrawString(10, 10, COLOR_TITLE, "Discord RPC -- Logs (B to exit)");

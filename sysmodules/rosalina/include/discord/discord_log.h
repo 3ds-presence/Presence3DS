@@ -32,4 +32,5 @@
 
 void DiscordLog_Init(void);
 void DiscordLog_Printf(const char *fmt, ...);
+void DiscordLog_Clear(void);
 char *DiscordLog_GetBuffer(void);

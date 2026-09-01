@@ -24,7 +24,6 @@
  *         reasonable ways as different from the original version.
  */
 
-#include <string.h>
 #include <stdarg.h>
 #include <3ds/synchronization.h>
 #include "discord/utils/printf.h"
@@ -32,92 +31,122 @@
 #include "fmt.h"
 
 // Max characters per visual line on the bottom screen (x=10, SPACING_X=6, width=320)
-// (320 - 10) / 6 ≈ 51, use 50 to have a safe margin
+// (320 - 10) / 6 ~ 51, use 50 to have a safe margin
 #define MAX_CHARS_PER_LOG_LINE 50
 
+// Circular log buffer. g_logHead writes, g_logTail marks the oldest kept
+// character, g_logCount counts valid characters. Capacity is capped at
+// DISCORD_LOG_SIZE - 1 so one byte always remains free for the terminator
+// DiscordLog_GetBuffer writes after linearizing. When full, the oldest
+// character is overwritten (tail advances) - no shifting needed.
 static char g_logBuffer[DISCORD_LOG_SIZE];
-static int g_logPos;
+static int g_logHead;
+static int g_logTail;
+static int g_logCount;
 static LightLock g_logLock;
+
+// Append one character to the ring, overwriting the oldest character when full.
+static void ring_put(char c)
+{
+    g_logBuffer[g_logHead] = c;
+    g_logHead = (g_logHead + 1) % DISCORD_LOG_SIZE;
+
+    if(g_logCount < DISCORD_LOG_SIZE - 1)
+    {
+        g_logCount++;
+    }
+    else
+    {
+        g_logTail = (g_logTail + 1) % DISCORD_LOG_SIZE;
+    }
+}
+
+// vfctprintf callback to handle line wrapping
+static void log_out_cb(char c, void *extra)
+{
+    int *col = (int *)extra;
+
+    if(c == '\n')
+    {
+        ring_put('\n');
+        *col = 0;
+    }
+    else if(*col >= MAX_CHARS_PER_LOG_LINE)
+    {
+        ring_put('\n');
+        ring_put(c);
+        *col = 1;
+    }
+    else
+    {
+        ring_put(c);
+        (*col)++;
+    }
+}
+
+void DiscordLog_Clear(void)
+{
+    g_logHead = 0;
+    g_logTail = 0;
+    g_logCount = 0;
+    g_logBuffer[0] = '\0';
+}
 
 void DiscordLog_Init(void)
 {
     LightLock_Init(&g_logLock);
-    g_logPos = 0;
-    g_logBuffer[0] = '\0';
+    DiscordLog_Clear();
 }
 
 void DiscordLog_Printf(const char *fmt, ...)
 {
     va_list args;
-    char tmp[256];
-    int len;
-
-    va_start(args, fmt);
-    len = vsprintf(tmp, fmt, args);
-    va_end(args);
-
-    if(len <= 0)
-        return;
-
-    // Insert \n every MAX_CHARS_PER_LOG_LINE characters to prevent lines
-    // from wrapping invisibly when displayed on the bottom screen.
-    // Existing \n are preserved and reset the column counter.
-    char wrapped[512];
-    char *src = tmp;
-    char *dst = wrapped;
     int col = 0;
-
-    while(*src && (dst - wrapped) < (int)sizeof(wrapped) - 2)
-    {
-        if(*src == '\n')
-        {
-            *dst++ = *src++;
-            col = 0;
-        }
-        else if(col >= MAX_CHARS_PER_LOG_LINE)
-        {
-            // Insert a line break before the character that would overflow
-            *dst++ = '\n';
-            col = 0;
-        }
-        else
-        {
-            *dst++ = *src++;
-            col++;
-        }
-    }
-    *dst = '\0';
-
-    int wrappedLen = (int)(dst - wrapped);
 
     LightLock_Lock(&g_logLock);
 
-    // Check if we need to make room (+1 for null terminator)
-    if(g_logPos + wrappedLen + 1 > DISCORD_LOG_SIZE)
-    {
-        int overflow = (g_logPos + wrappedLen + 1) - DISCORD_LOG_SIZE;
-        if(overflow >= g_logPos)
-        {
-            // Everything must be discarded
-            g_logPos = 0;
-        }
-        else
-        {
-            // Shift existing content to make room
-            memmove(g_logBuffer, g_logBuffer + overflow, g_logPos - overflow);
-            g_logPos -= overflow;
-        }
-    }
-
-    // Append new message (with \n wrapping already applied)
-    memcpy(&g_logBuffer[g_logPos], wrapped, wrappedLen);
-    g_logPos += wrappedLen;
-    g_logBuffer[g_logPos] = '\0';
+    va_start(args, fmt);
+    vfctprintf(log_out_cb, &col, fmt, args);
+    va_end(args);
 
     LightLock_Unlock(&g_logLock);
 }
 
+// Reverse g_logBuffer[lo..hi] in place.
+static void reverse_range(int lo, int hi)
+{
+    while(lo < hi)
+    {
+        char t = g_logBuffer[lo];
+        g_logBuffer[lo] = g_logBuffer[hi];
+        g_logBuffer[hi] = t;
+        lo++;
+        hi--;
+    }
+}
+
 char *DiscordLog_GetBuffer(void)
 {
+    LightLock_Lock(&g_logLock);
+
+    if(g_logCount == 0)
+    {
+        g_logHead = 0;
+        g_logTail = 0;
+    }
+    else if(g_logTail != 0)
+    {
+        // Rotate the ring in place (three reversals) to linearize it
+        reverse_range(0, DISCORD_LOG_SIZE - 1);
+        reverse_range(0, DISCORD_LOG_SIZE - 1 - g_logTail);
+        reverse_range(DISCORD_LOG_SIZE - g_logTail, DISCORD_LOG_SIZE - 1);
+        g_logTail = 0;
+        g_logHead = g_logCount;
+    }
+
+    g_logBuffer[g_logCount] = '\0';
+
+    LightLock_Unlock(&g_logLock);
+
     return g_logBuffer;
 }
