@@ -1,3 +1,4 @@
+
 /*
 *   This file is part of Luma3DS.
 *   Copyright (C) 2016-2020 Aurora Wright, TuxSH
@@ -183,25 +184,9 @@ Result miniSocExit(void)
     return miniSocExitDirect();
 }
 
-// Abort soc:U to unblock any thread stuck in a synchronous IPC call.
-// Only closes the handle -> does NOT free memory (the thread does that via miniSocExit).
-void miniSocAbort(void)
-{
-    if(miniSocHandle != 0)
-    {
-        svcCloseHandle(miniSocHandle);
-        miniSocHandle = 0;
-    }
-    miniSocEnabled = false;
-}
-
-// Return -1 immediately if soc:U handle is closed (after miniSocAbort)
-#define SOC_GUARD if(miniSocHandle == 0) return -1
-
 int socSocket(int domain, int type, int protocol)
 {
     int ret = 0;
-    SOC_GUARD;
 
     u32 *cmdbuf = getThreadCommandBuffer();
 
@@ -249,7 +234,6 @@ int socBind(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
     socklen_t tmp_addrlen = 0;
     u32 *cmdbuf = getThreadCommandBuffer();
     u8 tmpaddr[0x1c];
-    SOC_GUARD;
 
     memset(tmpaddr, 0, 0x1c);
 
@@ -297,7 +281,6 @@ int socListen(int sockfd, int max_connections)
 {
     Result ret = 0;
     u32 *cmdbuf = getThreadCommandBuffer();
-    SOC_GUARD;
 
     cmdbuf[0] = IPC_MakeHeader(0x3,2,2); // 0x30082
     cmdbuf[1] = (u32)sockfd;
@@ -329,7 +312,6 @@ int socAccept(int sockfd, struct sockaddr *addr, socklen_t *addrlen)
     int tmp_addrlen = 0x1c;
 
     u32 *cmdbuf = getThreadCommandBuffer();
-    SOC_GUARD;
     u8 tmpaddr[0x1c];
     u32 saved_threadstorage[2];
 
@@ -382,7 +364,6 @@ int socConnect(int sockfd, const struct sockaddr *addr, socklen_t addrlen)
     socklen_t tmp_addrlen = 0;
     u32 *cmdbuf = getThreadCommandBuffer();
     u8 tmpaddr[0x1c];
-    SOC_GUARD;
 
     memset(tmpaddr, 0, 0x1c);
 
@@ -425,7 +406,6 @@ int socPoll(struct pollfd *fds, nfds_t nfds, int timeout)
     u32 size = sizeof(struct pollfd)*nfds;
     u32 *cmdbuf = getThreadCommandBuffer();
     u32 saved_threadstorage[2];
-    SOC_GUARD;
 
     if(nfds == 0) {
         return -1;
@@ -469,7 +449,6 @@ int socClose(int sockfd)
 {
     int ret = 0;
     u32 *cmdbuf = getThreadCommandBuffer();
-    SOC_GUARD;
 
     cmdbuf[0] = IPC_MakeHeader(0xB,1,2); // 0xB0042
     cmdbuf[1] = (u32)sockfd;
@@ -497,7 +476,6 @@ int socSetsockopt(int sockfd, int level, int optname, const void *optval, sockle
 {
     int ret = 0;
     u32 *cmdbuf = getThreadCommandBuffer();
-    SOC_GUARD;
 
     cmdbuf[0] = IPC_MakeHeader(0x12,4,4); // 0x120104
     cmdbuf[1] = (u32)sockfd;
@@ -529,7 +507,6 @@ long socGethostid(void)
 {
     int ret = 0;
     u32 *cmdbuf = getThreadCommandBuffer();
-    SOC_GUARD;
 
     cmdbuf[0] = IPC_MakeHeader(0x16,0,0); // 0x160000
 
@@ -774,7 +751,6 @@ static ssize_t _socuipc_cmda(int sockfd, const void *buf, size_t len, int flags,
 
 ssize_t socRecvfrom(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
 {
-    SOC_GUARD;
     if(len < 0x2000)
         return _socuipc_cmd8(sockfd, buf, len, flags, src_addr, addrlen);
     return _socuipc_cmd7(sockfd, buf, len, flags, src_addr, addrlen);
@@ -782,7 +758,6 @@ ssize_t socRecvfrom(int sockfd, void *buf, size_t len, int flags, struct sockadd
 
 ssize_t socSendto(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen)
 {
-    SOC_GUARD;
     if(len < 0x2000)
         return _socuipc_cmda(sockfd, buf, len, flags, dest_addr, addrlen);
     return _socuipc_cmd9(sockfd, buf, len, flags, dest_addr, addrlen);
