@@ -49,7 +49,9 @@
 volatile DiscordState g_discord_state = DISCORD_STOPPED;
 char g_discord_status[64] = "Stopped";
 LightLock g_discord_lock;
+Handle g_rpc_should_stop_event;
 
+static bool is_initialized = false;
 static MyThread g_rpcThread;
 static u8 CTR_ALIGN(8) g_rpcThreadStack[0x4000];
 static volatile bool g_shouldStop;
@@ -229,10 +231,16 @@ void DiscordRPC_ThreadMain(void)
                     // All good, continue
                     break;
                 case 1:
+                    // Server closed the session itself: no logout needed later.
                     set_state(DISCORD_LOGIN, "Session expired");
                     DiscordLog_Printf("[WARN] Session expired\n");
+                    active_session = false;
                     break;
                 case 2:
+                    // Network error (incl. cancelled request): the server-side
+                    // session state is unknown and most likely still alive,
+                    // so keep active_session set -> the stop path will attempt
+                    // a proper logout.
                     set_state(DISCORD_ERROR, "Network error");
                     DiscordLog_Printf("[ERR] Network error\n");
                     break;
@@ -244,9 +252,7 @@ void DiscordRPC_ThreadMain(void)
 
             if (ret != 0)
             {
-
                 network_lost = true;
-                active_session = false;
                 break;
             }
             for (int i = 0; i < 100 && !g_shouldStop; i++) {
@@ -312,6 +318,8 @@ void DiscordRPC_Start(void)
 
     g_shouldStop = false;
     g_rpcStopping = false;
+    if(g_rpc_should_stop_event != 0)
+        svcClearEvent(g_rpc_should_stop_event);
 
     if(R_FAILED(svcCreateEvent(&g_rpcStartedEvent, RESET_STICKY)))
     {
@@ -344,18 +352,12 @@ void DiscordRPC_Stop(void)
 
     DiscordLog_Printf("[CMD] Stopping...\n");
     g_shouldStop = true;
+    if(g_rpc_should_stop_event != 0)
+        svcSignalEvent(g_rpc_should_stop_event);
 
-    // Wait 5 seconds for the thread to notice g_shouldStop and exit
-    Result res = MyThread_Join(&g_rpcThread, 5LL * 1000 * 1000 * 1000);
-
+    Result res = MyThread_Join(&g_rpcThread, 10LL * 1000 * 1000 * 1000);
     if(R_FAILED(res))
-    {
-        // Thread is stuck in a blocking soc:U IPC (no network).
-        // Abort soc:U handle to unblock it, then wait indefinitely.
-        DiscordLog_Printf("[CMD] Thread timeout, aborting soc:U...\n");
-        miniSocAbort();
-        MyThread_Join(&g_rpcThread, -1LL);
-    }
+        DiscordLog_Printf("[ERR] RPC thread did not exit within 30 s\n");
 
     set_state(DISCORD_STOPPED, "Stopped");
     DiscordLog_Printf("[CMD] Stopped\n");
@@ -363,7 +365,15 @@ void DiscordRPC_Stop(void)
 
 void DiscordRPC_Init(void)
 {
+    if (is_initialized)
+        return;
+    is_initialized = true;
     LightLock_Init(&g_discord_lock);
+    if(R_FAILED(svcCreateEvent(&g_rpc_should_stop_event, RESET_STICKY)))
+    {
+        DiscordLog_Printf("[ERR] Cannot create cancel event -> Stop latency degraded (not fatal)\n");
+        g_rpc_should_stop_event = 0;
+    }
     g_shouldStop = false;
     g_rpcStopping = false;
     g_counter = 0;

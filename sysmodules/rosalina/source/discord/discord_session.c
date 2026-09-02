@@ -36,6 +36,7 @@
 #include "discord/utils/discord_util.h"
 #include "discord/discord_log.h"
 #include "discord/utils/sha256.h"
+#include "discord/discord_rpc_main.h"
 
 u64 g_counter = 0;
 bool active_session = false;
@@ -100,7 +101,7 @@ int discord_login(void)
     snprintf(body, sizeof(body), "uuid=%s", g_uuid);
 
     int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "login",
-                              body, NULL, resp, sizeof(resp), 0);
+                              body, NULL, resp, sizeof(resp), g_rpc_should_stop_event);
     if(r < 0)
     {
         DiscordLog_Printf("[ERR] Login failed (network, r=%d)\n", r);
@@ -156,7 +157,7 @@ bool discord_verify(const char *data)
     }
 
     int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "login/verify",
-                              body, data, resp, sizeof(resp), 0);
+                              body, data, resp, sizeof(resp), g_rpc_should_stop_event);
     if(r == 0 && discord_parse_field(resp, "success", ok, sizeof(ok)) &&
        strcmp(ok, "true") == 0)
     {
@@ -190,7 +191,7 @@ int discord_get_script(u64 titleid, char *code_out, u32 code_size)
              g_uuid, auth_hex, titleid);
 
     int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "script",
-                              body, NULL, resp, sizeof(resp), 0);
+                              body, NULL, resp, sizeof(resp), g_rpc_should_stop_event);
     if(r < 0)
     {
         DiscordLog_Printf("[ERR] Script fetch failed (network, r=%d)\n", r);
@@ -249,7 +250,7 @@ int discord_activity_update(char* data)
     }
 
     int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "activity/set",
-                              body, data, resp, sizeof(resp), 0);
+                              body, data, resp, sizeof(resp), g_rpc_should_stop_event);
 
     if (r < 0)
     {
@@ -294,7 +295,7 @@ int discord_activity_heartbeat(void)
         g_uuid, auth_hex);
 
     int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "activity/heartbeat",
-                              body, NULL, resp, sizeof(resp), 0);
+                              body, NULL, resp, sizeof(resp), g_rpc_should_stop_event);
 
     if (r < 0)
     {

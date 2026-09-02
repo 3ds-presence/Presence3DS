@@ -36,6 +36,7 @@
 // HTTP connection timeout: 5 seconds, recv timeout: 3 seconds
 #define CONNECT_TIMEOUT_NS (5LL * 1000 * 1000 * 1000)
 #define RECV_TIMEOUT_NS    (3LL * 1000 * 1000 * 1000)
+#define RECV_POLL_SLICE_MS 500
 
 // Send all bytes over the socket, handling partial sends.
 // Returns 0 on success, -1 on error.
@@ -111,42 +112,19 @@ int discord_http_post(const char *host, u16 port, const char *path,
 
     // DiscordLog_Printf("[HTTP] Connecting to IP: %s, Port: %u\n", inet_ntoa(addr.sin_addr), port);
 
-    // Connect with retry limit (max 2 attempts ≈ 60s total TCP timeout when no network)
+    // Connect with a 5 s timeout.
+    // On timeout/cancel the TCP attempt is abandoned in the background:
+    // socClose() in the cleanup below kills it.
+    if(soc_connect_timeout(sockfd, (struct sockaddr *)&addr, sizeof(addr),
+                           timeout_event, CONNECT_TIMEOUT_NS) != 0)
     {
-        int connect_tries = 2;
-        while(connect_tries-- > 0)
-        {
-            // Check for cancellation
-            if(timeout_event != 0 && svcWaitSynchronization(timeout_event, 0) == 0)
-            {
-                DiscordLog_Printf("[WARN] HTTP cancelled before connect\n");
-                goto cleanup;
-            }
-
-            int res = socConnect(sockfd, (struct sockaddr *)&addr, sizeof(addr));
-            if(res == 0)
-                break;
-
-            // Connection failed - check if it's a transient error
-            if(res < -10000)
-            {
-                DiscordLog_Printf("[ERR] Socket service broken: %d\n", res);
-                goto cleanup;
-            }
-
-            DiscordLog_Printf("[WARN] Connect failed: %d, retrying...\n", res);
-            if(connect_tries > 0)
-                svcSleepThread(500 * 1000 * 1000LL);
-        }
-
-        if(connect_tries < 0)
-        {
-            DiscordLog_Printf("[ERR] Connect failed after retries\n");
-            goto cleanup;
-        }
+        DiscordLog_Printf("[ERR] Connect failed or timed out\n");
+        goto cleanup;
     }
 
     // Send HTTP headers
+    // Commitment point: past this line, the request runs to completion
+    // (not cancellable).
     if(send_all(sockfd, req, req_len) != 0)
         goto cleanup;
 
@@ -157,27 +135,23 @@ int discord_http_post(const char *host, u16 port, const char *path,
     if(extra_len > 0 && send_all(sockfd, body_extra, extra_len) != 0)
         goto cleanup;
 
-    // Receive response (with timeout via socPoll or checking event)
     {
         u32 total_received = 0;
         s32 n;
+        // Idle deadline: abort after RECV_TIMEOUT_NS without any data
+        // (counter reset on each successful recv), measured in poll slices.
+        const u32 max_idle_slices = (u32)(RECV_TIMEOUT_NS / (RECV_POLL_SLICE_MS * 1000LL));
+        u32 idle_slices = 0;
 
         while(total_received < resp_size - 1)
         {
-            // Check for cancellation
-            if(timeout_event != 0 && svcWaitSynchronization(timeout_event, 0) == 0)
-            {
-                DiscordLog_Printf("[WARN] HTTP cancelled during recv\n");
-                goto cleanup;
-            }
-
-            // Poll with 500ms timeout for readability
+            // Poll in slices: bounded wait
             struct pollfd pfd;
             pfd.fd = sockfd;
             pfd.events = POLLIN;
             pfd.revents = 0;
 
-            n = socPoll(&pfd, 1, 500);
+            n = socPoll(&pfd, 1, RECV_POLL_SLICE_MS);
             if(n < 0)
             {
                 DiscordLog_Printf("[ERR] Poll failed: %d\n", n);
@@ -185,7 +159,13 @@ int discord_http_post(const char *host, u16 port, const char *path,
             }
             else if(n == 0)
             {
-                // Timeout on poll, check cancel and retry
+                // No data this slice; abort after RECV_TIMEOUT_NS of silence
+                if(++idle_slices >= max_idle_slices)
+                {
+                    DiscordLog_Printf("[ERR] Recv timeout (no data for %lu ms)\n",
+                                      (u32)(RECV_TIMEOUT_NS / 1000000));
+                    goto cleanup;
+                }
                 continue;
             }
 
@@ -198,6 +178,7 @@ int discord_http_post(const char *host, u16 port, const char *path,
                 break;
 
             total_received += (u32)received;
+            idle_slices = 0; // data is flowing, reset the idle deadline
         }
 
         if(total_received > 0)

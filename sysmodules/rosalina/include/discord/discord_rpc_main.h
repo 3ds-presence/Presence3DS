@@ -40,6 +40,7 @@ typedef enum {
 extern volatile DiscordState g_discord_state;
 extern char g_discord_status[64];
 extern LightLock g_discord_lock;
+extern Handle g_rpc_should_stop_event;
 
 #define PRESENCE3DS_VERSION "v1.2.0"
 

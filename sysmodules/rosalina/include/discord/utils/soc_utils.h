@@ -28,10 +28,19 @@
 #define SOC_UTILS_H
 
 #include <3ds.h>
+#include <sys/socket.h>
 
 // Resolve a host string to an IPv4 address in network byte order.
 // Supports both IP addresses ("192.168.1.100") and domain names ("example.com").
 // Returns 0 on success, -1 on failure.
 int resolve_host(const char *host, u32 *ip_out);
+
+// Connect with a timeout, so the call never blocks longer than timeout_ns,
+// and can be cancelled early by signalling cancel_event (0 = no cancellation).
+// IMPORTANT: after a failed or timed-out attempt the TCP attempt keeps running
+// in the background: the caller MUST close the socket (socClose) afterwards.
+// Returns 0 on success, -1 on failure/timeout/cancellation.
+int soc_connect_timeout(int sockfd, const struct sockaddr *addr, socklen_t addrlen,
+                        Handle cancel_event, u64 timeout_ns);
 
 #endif
