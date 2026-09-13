@@ -113,6 +113,171 @@ static bool network_init(void)
 //  Thread main
 // ---------------------------------------------------------------------------
 
+// Result of a login+verify phase (see login_session()).
+typedef enum {
+    SESSION_OK,       // logged in and verified
+    SESSION_REFUSED,  // server refused the login (success=false): retrying won't help
+    SESSION_FAILED,   // retries exhausted (login or verify network error)
+    SESSION_STOPPED,  // g_shouldStop was requested during login
+} SessionResult;
+
+// Login + verify phase. When `reconnecting` is set (after a network error),
+// up to 3 attempts are made instead of just 1.
+static SessionResult login_session(const char *mii_data, bool reconnecting)
+{
+    int max_attempts = reconnecting ? 3 : 1;
+    set_state(DISCORD_LOGIN, reconnecting ? "Reconnecting..." : "Logging in...");
+
+    for(int attempt = 1; attempt <= max_attempts && !g_shouldStop; attempt++)
+    {
+        int login_res = discord_login();
+        if(login_res == 1)
+        {
+            // Server refused the login (success=false): retrying won't help.
+            DiscordLog_Printf("[THREAD] Login refused, stopping session\n");
+            set_state(DISCORD_ERROR, "Login refused");
+            return SESSION_REFUSED;
+        }
+        if(login_res != 0)
+        {
+            // Network error: worth retrying when reconnecting.
+            DiscordLog_Printf("[ERR] Login failed (attempt %d/%d)\n", attempt, max_attempts);
+            if(attempt == max_attempts)
+            {
+                set_state(DISCORD_ERROR, "Login failed");
+                return SESSION_FAILED;
+            }
+        }
+        else
+        {
+            set_state(DISCORD_VERIFY, "Verifying...");
+            if(discord_verify(mii_data))
+                return SESSION_OK;
+            DiscordLog_Printf("[ERR] Verify failed (attempt %d/%d)\n", attempt, max_attempts);
+            if(attempt == max_attempts)
+            {
+                set_state(DISCORD_ERROR, "Verify failed");
+                return SESSION_FAILED;
+            }
+        }
+        set_state(DISCORD_LOGIN, "Reconnecting...");
+        svcSleepThread(3 * 1000 * 1000 * 1000LL); // Wait 3s before retrying
+    }
+
+    // The loop ended because g_shouldStop was set.
+    return SESSION_STOPPED;
+}
+
+// Result of the activity loop (see run_activity_loop()).
+typedef enum {
+    ACTIVITY_OK,           // exited because g_shouldStop was requested
+    ACTIVITY_YIELD_EXIT,   // radio released for a game (ndm yield)
+    ACTIVITY_NETWORK_LOST, // server connection lost: a new login is needed
+} ActivityResult;
+
+// Activity loop: pushes activity updates/heartbeats, polls the running app
+// (PMDBG) once per second, and watches the yield/stop flags. Returns the
+// reason the loop ended.
+static ActivityResult run_activity_loop(void)
+{
+    set_state(DISCORD_ACTIVE, "Connected to Discord");
+    u8 prev_hash[32];
+    memset(prev_hash, 0, sizeof(prev_hash));
+
+    while(!g_shouldStop)
+    {
+        char data[5500];
+        int ret = -1;
+
+        if(discord_activity_tick(data, sizeof(data)) != 0)
+        {
+            DiscordLog_Printf("[THREAD] Activity build failed, reconnecting\n");
+            ret = 2;
+        }
+        else
+        {
+            // Compute SHA-256 hash of the activity data for change detection
+            u8 current_hash[32];
+            SHA256_CTX sha;
+            sha256_init(&sha);
+            sha256_update(&sha, (const u8 *)data, strlen(data));
+            sha256_final(&sha, current_hash);
+
+            if (memcmp(current_hash, prev_hash, 32) != 0)
+            {
+                memcpy(prev_hash, current_hash, 32);
+                DiscordLog_Printf("[THREAD] Activity changed: %s\n", data);
+                // If HIDE_HOME is enabled and we're on Home Menu
+                if(g_pref_values[PREFS_HIDE_HOME])
+                {
+                    // Check if title ID is all zeros (Home Menu)
+                    const char *tid_field = strstr(data, "titleid=0000000000000000");
+                    if(tid_field)
+                    {
+                        data[0] = '\0'; // Clear activity data to hide it
+                    }
+                }
+                ret = discord_activity_update(data);
+            }
+            else
+            {
+                // No change in activity, just send a heartbeat
+                ret = discord_activity_heartbeat();
+            }
+        }
+
+        switch(ret)
+        {
+            case 0:
+                // All good, continue
+                break;
+            case 1:
+                // Server closed the session itself: no logout needed later.
+                set_state(DISCORD_ERROR, "Session expired");
+                DiscordLog_Printf("[WARN] Session expired\n");
+                active_session = false;
+                break;
+            case 2:
+                // Network error (incl. cancelled request): the server-side
+                // session state is unknown and most likely still alive,
+                // so keep active_session set -> the stop path will attempt
+                // a proper logout.
+                set_state(DISCORD_ERROR, "Network error");
+                DiscordLog_Printf("[ERR] Network error\n");
+                break;
+            default:
+                set_state(DISCORD_ERROR, "Activity update failed");
+                DiscordLog_Printf("[ERR] Activity update failed (ret=%d)\n", ret);
+                break;
+        }
+
+        if (ret != 0)
+            return ACTIVITY_NETWORK_LOST;
+
+        for (int i = 0; i < 100 && !g_shouldStop; i++)
+        {
+            svcSleepThread(100 * 1000 * 1000); // Sleep 100ms, check for stop signal every 100ms
+            if(yieldWantsExit())
+                return ACTIVITY_YIELD_EXIT;
+            // Every second: make sure the app we read from is still alive
+            if (i % 10 == 0)
+            {
+                FS_ProgramInfo programInfo;
+                u32 pid;
+                u32 launchFlags;
+                if(R_FAILED(PMDBG_GetCurrentAppInfo(&programInfo, &pid, &launchFlags)))
+                {
+                    CustomRPC_UnmapPage();
+                    CustomRPC_ClearConfig();
+                }
+            }
+        }
+    }
+
+    // g_shouldStop was requested while polling the activity
+    return ACTIVITY_OK;
+}
+
 void DiscordRPC_ThreadMain(void)
 {
     active_session = false;
@@ -143,168 +308,31 @@ void DiscordRPC_ThreadMain(void)
     for(;;)
     {
         // --- Login + Verify ---
-        // After a network error (reconnecting == true), retry a few times.
-        int max_attempts = reconnecting ? 3 : 1;
-        bool session_ok = false;
-        set_state(DISCORD_LOGIN, reconnecting ? "Reconnecting..." : "Logging in...");
-        for (int attempt = 1; attempt <= max_attempts && !g_shouldStop; attempt++)
+        SessionResult sres = login_session(data_mii, reconnecting);
+        if(sres != SESSION_OK)
         {
-            int login_res = discord_login();
-            if(login_res == 1)
-            {
-                // Server refused the login (success=false): retrying won't help.
-                DiscordLog_Printf("[THREAD] Login refused, stopping session\n");
-                set_state(DISCORD_ERROR, "Login refused");
-                goto stop;
-            }
-            if(login_res != 0)
-            {
-                // Network error: worth retrying when reconnecting.
-                DiscordLog_Printf("[ERR] Login failed (attempt %d/%d)\n", attempt, max_attempts);
-                if(attempt == max_attempts)
-                {
-                    set_state(DISCORD_ERROR, "Login failed");
-                    break;
-                }
-            }
-            else
-            {
-                set_state(DISCORD_VERIFY, "Verifying...");
-                if(discord_verify(data_mii))
-                {
-                    session_ok = true;
-                    break;
-                }
-                DiscordLog_Printf("[ERR] Verify failed (attempt %d/%d)\n", attempt, max_attempts);
-                if(attempt == max_attempts)
-                {
-                    set_state(DISCORD_ERROR, "Verify failed");
-                    break;
-                }
-            }
-            set_state(DISCORD_LOGIN, "Reconnecting...");
-            svcSleepThread(3 * 1000 * 1000 * 1000LL); // Wait 3s before retrying
-        }
-        if(!session_ok)
-        {
-            DiscordLog_Printf("[THREAD] Error occurred, stopping session\n");
-            goto stop;
+            // Only an actual failure logs an error (voluntary stops are silent)
+            if(sres == SESSION_FAILED)
+                DiscordLog_Printf("[THREAD] Error occurred, stopping session\n");
+            break;
         }
         reconnecting = false;
 
         // --- Activity loop ---
-        set_state(DISCORD_ACTIVE, "Connected to Discord");
-        u8 prev_hash[32];
-        memset(prev_hash, 0, 32);
-        bool network_lost = false;
-        bool yield_exit = false;
-        while(!g_shouldStop)
-        {
-            char data[5500];
-            int ret = -1;
-
-            if(discord_activity_tick(data, sizeof(data)) != 0)
-            {
-                DiscordLog_Printf("[THREAD] Activity build failed, reconnecting\n");
-                ret = 2;
-            }
-            else
-            {
-                // Compute SHA-256 hash of the activity data for change detection
-                u8 current_hash[32];
-                SHA256_CTX sha;
-                sha256_init(&sha);
-                sha256_update(&sha, (const u8 *)data, strlen(data));
-                sha256_final(&sha, current_hash);
-
-                if (memcmp(current_hash, prev_hash, 32) != 0)
-                {
-                    memcpy(prev_hash, current_hash, 32);
-                    DiscordLog_Printf("[THREAD] Activity changed: %s\n", data);
-                    // If HIDE_HOME is enabled and we're on Home Menu
-                    if(g_pref_values[PREFS_HIDE_HOME])
-                    {
-                        // Check if title ID is all zeros (Home Menu)
-                        const char *tid_field = strstr(data, "titleid=0000000000000000");
-                        if(tid_field)
-                        {
-                            data[0] = '\0'; // Clear activity data to hide it
-                        }
-                    }
-                    ret = discord_activity_update(data);
-                } else {
-                    // No change in activity, just send a heartbeat
-                    ret = discord_activity_heartbeat();
-                }
-            }
-
-            switch(ret) {
-                case 0:
-                    // All good, continue
-                    break;
-                case 1:
-                    // Server closed the session itself: no logout needed later.
-                    set_state(DISCORD_LOGIN, "Session expired");
-                    DiscordLog_Printf("[WARN] Session expired\n");
-                    active_session = false;
-                    break;
-                case 2:
-                    // Network error (incl. cancelled request): the server-side
-                    // session state is unknown and most likely still alive,
-                    // so keep active_session set -> the stop path will attempt
-                    // a proper logout.
-                    set_state(DISCORD_ERROR, "Network error");
-                    DiscordLog_Printf("[ERR] Network error\n");
-                    break;
-                default:
-                    set_state(DISCORD_ERROR, "Activity update failed");
-                    DiscordLog_Printf("[ERR] Activity update failed (ret=%d)\n", ret);
-                    break;
-            }
-
-            if (ret != 0)
-            {
-                network_lost = true;
-                break;
-            }
-            for (int i = 0; i < 100 && !g_shouldStop; i++) {
-                svcSleepThread(100 * 1000 * 1000); // Sleep 100ms, check for stop signal every 100ms
-                if(yieldWantsExit())
-                {
-                    yield_exit = true;
-                    break;
-                }
-                // Every one secondes :
-                if (i % 10 == 0) {
-                    FS_ProgramInfo programInfo;
-                    u32 pid;
-                    u32 launchFlags;
-
-                    if(R_FAILED(PMDBG_GetCurrentAppInfo(&programInfo, &pid, &launchFlags)))
-                    {
-                        CustomRPC_UnmapPage();
-                        CustomRPC_ClearConfig();
-                    }
-                }
-            }
-            if(yield_exit)
-                break;
-        }
-
-        if(yield_exit)
+        ActivityResult ares = run_activity_loop();
+        if(ares == ACTIVITY_YIELD_EXIT)
         {
             DiscordLog_Printf("[THREAD] Network released for a game, exiting...\n");
             active_session = false; // no point logging out on a dying network
-            goto stop;
+            break;
         }
-
-        if(network_lost)
+        if(ares == ACTIVITY_NETWORK_LOST)
         {
             if(yieldWantsExit())
             {
                 DiscordLog_Printf("[THREAD] Network released for a game, exiting...\n");
                 active_session = false; // no network: skip the logout below
-                goto stop;
+                break;
             }
             DiscordLog_Printf("[THREAD] Disconnected from server: attempting to reconnect\n");
             CustomRPC_UnmapPage();
@@ -312,9 +340,11 @@ void DiscordRPC_ThreadMain(void)
             reconnecting = true;
             continue;
         }
+        // ACTIVITY_OK: g_shouldStop was requested while active
+        break;
     }
 
-stop:
+    // --- Cleanup (stop path) ---
     CustomRPC_UnmapPage();
     CustomRPC_ClearConfig();
     if(active_session && !ndmYieldIsActive())
