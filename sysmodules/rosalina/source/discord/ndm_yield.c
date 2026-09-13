@@ -85,8 +85,7 @@ static MyThread s_thread;
 static u8 s_threadStack[THREAD_STACK_SIZE];
 static Handle s_wakeEvent;            // "session ended" -> restart Discord presence
 
-// Restart Discord RPC after a session (dedicated thread: the RPC thread
-// never restarts itself)
+// Restart Discord RPC after a session (dedicated thread)
 static void ndmYieldThreadMain(void)
 {
     for(;;)
@@ -94,7 +93,7 @@ static void ndmYieldThreadMain(void)
         if(R_FAILED(svcWaitSynchronization(s_wakeEvent, -1LL)))
             continue;
         svcClearEvent(s_wakeEvent);
-        DiscordRPC_StartWithNetRetry(5, 3LL * 1000 * 1000 * 1000);
+        DiscordRPC_StartWithNetRetry(20, 3LL * 1000 * 1000 * 1000);
     }
 }
 
