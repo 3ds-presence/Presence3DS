@@ -35,6 +35,8 @@ You can connect to the official 3DS Presence server, or to your own server if yo
 - `Hide Mii in Presence`: If enabled, the Mii information will not be sent to the 3DS Presence server.
 - `Hide Home activity`: If enabled, the home menu activity will not be sent to the 3DS Presence server (no presence will be shown on your Discord status when on the home menu).
 - `Auto-Start at boot`: If enabled, the connection to the 3DS Presence server will be automatically started when the 3DS is booted.
+- `Force English name of the game`: If enabled, the game name will always be sent in English, even if the 3DS is set to another language.
+- `Disable displaying game state`: If enabled, the extra information about the game state (like level, score, etc) will not be sent to the 3DS Presence server.
 
 ## Extra information about the game
 By default, Presence3DS will only send the game title ID and name to the 3DS Presence server. However, it is possible to add extra information about the current state of the game being played (like level, score, etc).
