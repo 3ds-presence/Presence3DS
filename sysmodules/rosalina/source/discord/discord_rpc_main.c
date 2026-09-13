@@ -40,6 +40,7 @@
 #include "discord/discord_session.h"
 #include "discord/discord_log.h"
 #include "discord/discord_activity.h"
+#include "discord/ndm_yield.h"
 #include "discord/utils/mii_utils.h"
 #include "discord/utils/sha256.h"
 #include "discord/customRPC/read_memory.h"
@@ -57,6 +58,13 @@ static u8 CTR_ALIGN(8) g_rpcThreadStack[0x4000];
 static volatile bool g_shouldStop;
 static volatile bool g_rpcStopping;
 static Handle g_rpcStartedEvent;
+static u32 s_rpcYieldGen;
+
+// True when the radio was voluntarily released for a game
+static bool yieldWantsExit(void)
+{
+    return ndmYieldRpcShouldExit(&s_rpcYieldGen);
+}
 
 // ---------------------------------------------------------------------------
 //  Helpers
@@ -108,12 +116,15 @@ static bool network_init(void)
 void DiscordRPC_ThreadMain(void)
 {
     active_session = false;
+    // Sample the yield generation: any release after this point means this
+    // thread must exit as soon as it notices (see yieldWantsExit()).
+    s_rpcYieldGen = ndmYieldGetGeneration();
     DiscordLog_Printf("[THREAD] Started\n");
 
     if(!network_init())
     {
         svcSignalEvent(g_rpcStartedEvent);
-        miniSocExit();
+        ndmYieldSafeSocExit();
         return;
     }
 
@@ -186,6 +197,7 @@ void DiscordRPC_ThreadMain(void)
         u8 prev_hash[32];
         memset(prev_hash, 0, 32);
         bool network_lost = false;
+        bool yield_exit = false;
         while(!g_shouldStop)
         {
             char data[5500];
@@ -257,6 +269,11 @@ void DiscordRPC_ThreadMain(void)
             }
             for (int i = 0; i < 100 && !g_shouldStop; i++) {
                 svcSleepThread(100 * 1000 * 1000); // Sleep 100ms, check for stop signal every 100ms
+                if(yieldWantsExit())
+                {
+                    yield_exit = true;
+                    break;
+                }
                 // Every one secondes :
                 if (i % 10 == 0) {
                     FS_ProgramInfo programInfo;
@@ -270,10 +287,25 @@ void DiscordRPC_ThreadMain(void)
                     }
                 }
             }
+            if(yield_exit)
+                break;
+        }
+
+        if(yield_exit)
+        {
+            DiscordLog_Printf("[THREAD] Network released for a game, exiting...\n");
+            active_session = false; // no point logging out on a dying network
+            goto stop;
         }
 
         if(network_lost)
         {
+            if(yieldWantsExit())
+            {
+                DiscordLog_Printf("[THREAD] Network released for a game, exiting...\n");
+                active_session = false; // no network: skip the logout below
+                goto stop;
+            }
             DiscordLog_Printf("[THREAD] Disconnected from server: attempting to reconnect\n");
             CustomRPC_UnmapPage();
             CustomRPC_ClearConfig();
@@ -285,9 +317,10 @@ void DiscordRPC_ThreadMain(void)
 stop:
     CustomRPC_UnmapPage();
     CustomRPC_ClearConfig();
-    if(active_session) discord_logout();
+    if(active_session && !ndmYieldIsActive())
+        discord_logout();
     set_state(DISCORD_STOPPED, "Stopped");
-    miniSocExit();
+    ndmYieldSafeSocExit();
     DiscordLog_Printf("[THREAD] Exited\n");
 }
 
@@ -357,10 +390,45 @@ void DiscordRPC_Stop(void)
 
     Result res = MyThread_Join(&g_rpcThread, 10LL * 1000 * 1000 * 1000);
     if(R_FAILED(res))
-        DiscordLog_Printf("[ERR] RPC thread did not exit within 30 s\n");
+        DiscordLog_Printf("[ERR] RPC thread did not exit within 10 s\n");
 
     set_state(DISCORD_STOPPED, "Stopped");
     DiscordLog_Printf("[CMD] Stopped\n");
+}
+
+void DiscordRPC_StartWithNetRetry(int maxRetries, u64 retryDelayNs)
+{
+    for(int i = 0; i < maxRetries; i++)
+    {
+        // Reset state
+        LightLock_Lock(&g_discord_lock);
+        if(g_discord_state == DISCORD_ERROR)
+            g_discord_state = DISCORD_STOPPED;
+        LightLock_Unlock(&g_discord_lock);
+
+        DiscordRPC_Start();
+
+        // Only network-level failures (soc/WiFi not ready) are worth
+        // retrying.
+        bool isNetError = false;
+        LightLock_Lock(&g_discord_lock);
+        if(g_discord_state == DISCORD_ERROR)
+        {
+            if(strstr(g_discord_status, "Socket") != NULL ||
+               strstr(g_discord_status, "Network init") != NULL)
+            {
+                isNetError = true;
+            }
+        }
+        LightLock_Unlock(&g_discord_lock);
+
+        if(!isNetError)
+            return;
+
+        DiscordLog_Printf("[CMD] Network not ready, retrying in %llu s (%d/%d)\n",
+                          retryDelayNs / 1000000000ULL, i + 1, maxRetries);
+        svcSleepThread(retryDelayNs);
+    }
 }
 
 void DiscordRPC_Init(void)

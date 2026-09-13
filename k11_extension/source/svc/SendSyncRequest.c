@@ -26,11 +26,19 @@
 #include <string.h>
 
 #include "svc/SendSyncRequest.h"
+#include "synchronization.h"
 #include "ipc.h"
+#include "ndmu_yield.h"
 
 static inline bool isNdmuWorkaround(const SessionInfo *info, u32 pid)
 {
     return info != NULL && strcmp(info->name, "ndm:u") == 0 && hasStartedRosalinaNetworkFuncs && pid >= nbSection0Modules;
+}
+
+// Real Leave from the game while a yield session is active
+static inline bool isNdmuYieldLeave(const SessionInfo *info, u32 pid)
+{
+    return info != NULL && strcmp(info->name, "ndm:u") == 0 && pid >= nbSection0Modules && (ndmuYieldStateGet() & NDMU_BIT_ACK);
 }
 
 Result SendSyncRequestHook(Handle handle)
@@ -56,9 +64,36 @@ Result SendSyncRequestHook(Handle handle)
                 SessionInfo *info = SessionInfo_Lookup(clientSession->parentSession);
                 if(isNdmuWorkaround(info, pid))
                 {
-                    cmdbuf[0] = 0x10040;
-                    cmdbuf[1] = 0;
-                    skip = true;
+                    if(cmdbuf[1] >= 2u)
+                    {
+                        // Radio-exclusive state (LOCAL_COMMUNICATIONS/STREETPASS/STREETPASS_DATA):
+                        // ask Rosalina to release the radio. If it refuses
+                        // (our ASK gets cleared) or we time out (~1 s), we
+                        // answer the game ourselves with a fake success:
+                        // the request never reaches ndm:u (same behavior
+                        // as stock Luma).
+                        ndmuYieldStateClearBits(NDMU_BIT_ACK);
+                        ndmuYieldStateSetBits(NDMU_BIT_ASK);
+
+                        if(ndmuWaitForAck())
+                            break; // acked: the request reaches ndm for real
+
+                        // No ack: fabricate the success reply ourselves
+                        // and drop the request (ndm:u never sees it).
+                        ndmuYieldStateClearBits(NDMU_BIT_ASK);
+                        cmdbuf[0] = 0x10040;
+                        cmdbuf[1] = 0;
+                        skip = true;
+                    }
+                    else if(cmdbuf[1] == 1u) // NDM_EXCLUSIVE_STATE_INFRASTRUCTURE
+                    {
+                        // INFRASTRUCTURE set by rosalina 
+                        // The mode is already active.
+                        cmdbuf[0] = 0x10040;
+                        cmdbuf[1] = 0;
+                        skip = true;
+                    }
+                    // NONE (0): no radio use, pass through untouched.
                 }
 
                 break;
@@ -94,7 +129,11 @@ Result SendSyncRequestHook(Handle handle)
             case 0x20002:
             {
                 SessionInfo *info = SessionInfo_Lookup(clientSession->parentSession);
-                if(isNdmuWorkaround(info, pid))
+                if(isNdmuYieldLeave(info, pid))
+                {
+                    ndmuYieldStateSetBits(NDMU_BIT_LEAVE);
+                }
+                else if(isNdmuWorkaround(info, pid))
                 {
                     cmdbuf[0] = 0x20040;
                     cmdbuf[1] = 0;

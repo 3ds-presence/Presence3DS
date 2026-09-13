@@ -61,6 +61,7 @@
 #include "discord/discord_config.h"
 #include "discord/user_prefs.h"
 #include "discord/discord_session.h"
+#include "discord/ndm_yield.h"
 
 bool isN3DS;
 
@@ -151,6 +152,7 @@ static bool s_wasDiscordActive = false;
 static void handleTermNotification(u32 notificationId)
 {
     (void)notificationId;
+    ndmYieldOnAppExit();
 }
 
 static void handleSleepNotification(u32 notificationId)
@@ -190,55 +192,14 @@ static void handleSleepNotification(u32 notificationId)
 static void discord_rpc_start_task(void *argdata)
 {
     (void)argdata;
-    // Wait 5 seconds for the system to fully stabilise after wake
-    svcSleepThread(5LL * 1000 * 1000 * 1000);
-    DiscordRPC_Start();
-}
-
-static void discord_rpc_start_task_boot(void *argdata)
-{
-    (void)argdata;
-    // Poll ndm:u every 1 second until it becomes available (indicates system boot is advanced)
+    // ndm:u becomes available when the boot is advanced enough for soc
     while(!isServiceUsable("ndm:u"))
     {
         svcSleepThread(1LL * 1000 * 1000 * 1000); // 1 second
     }
-    // Once ndm:u is available, wait 5 seconds for WiFi to connect
+    // Give WiFi 5 s to connect, then let the shared starter retry
     svcSleepThread(5LL * 1000 * 1000 * 1000);
-
-    // Retry loop: if DiscordRPC fails with a network-level error (socket creation or 
-    // network init failure), retry every 3 seconds.
-    for(int retries = 0; retries < 20; retries++) // ~60s max retry
-    {
-        DiscordRPC_Start();
-
-        // Check for network-level error (socket creation or network init failure)
-        bool isNetError = false;
-        LightLock_Lock(&g_discord_lock);
-        if(g_discord_state == DISCORD_ERROR)
-        {
-            if(strstr(g_discord_status, "Socket") != NULL ||
-               strstr(g_discord_status, "Network init") != NULL)
-            {
-                isNetError = true;
-            }
-        }
-        LightLock_Unlock(&g_discord_lock);
-
-        if(!isNetError)
-            break; // Success or non-network error (e.g. login failure), stop retrying
-
-        DiscordLog_Printf("[BOOT] Network not ready (socket failed), retrying in 3s...\n");
-
-        // Reset state so DiscordRPC_Start() will accept a new attempt
-        LightLock_Lock(&g_discord_lock);
-        g_discord_state = DISCORD_STOPPED;
-        strncpy(g_discord_status, "Retrying...", sizeof(g_discord_status) - 1);
-        g_discord_status[sizeof(g_discord_status) - 1] = '\0';
-        LightLock_Unlock(&g_discord_lock);
-
-        svcSleepThread(3LL * 1000 * 1000 * 1000);
-    }
+    DiscordRPC_StartWithNetRetry(20, 3LL * 1000 * 1000 * 1000); // ~60 s max retry
 }
 
 static void discord_rpc_stop_task(void *argdata)
@@ -259,15 +220,12 @@ static void handleShellNotification(u32 notificationId)
         // Note that this notification is also fired on system init.
         // Sequence goes like this: MCU fires notif. 0x200 on shell open
         // and shell close, then NS demuxes it and fires 0x213 and 0x214.
-        if(s_wasDiscordActive)
-        {
-            s_wasDiscordActive = false;
-            TaskRunner_RunTask(discord_rpc_start_task, NULL, 0);
-        }
-        else if(!s_initialBootComplete && g_pref_values[PREFS_AUTO_START] && g_discord_state == DISCORD_STOPPED)
+        if(s_wasDiscordActive || (!s_initialBootComplete && g_pref_values[PREFS_AUTO_START] && g_discord_state == DISCORD_STOPPED))
         {
             // First shell open at boot: auto-start Discord RPC if enabled.
-            TaskRunner_RunTask(discord_rpc_start_task_boot, NULL, 0);
+            // Or after sleep mode: restart Discord RPC if it was active before shell close.
+            s_wasDiscordActive = false;
+            TaskRunner_RunTask(discord_rpc_start_task, NULL, 0);
         }
         s_initialBootComplete = true;
         handleShellOpened();
@@ -374,6 +332,7 @@ int main(void)
         svcBreak(USERBREAK_ASSERT);
 
     Draw_Init();
+    ndmYieldInit();
     Cheat_SeedRng(svcGetSystemTick());
     ScreenFiltersMenu_LoadConfig();
     SysConfigMenu_LoadConfig();

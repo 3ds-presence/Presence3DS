@@ -28,6 +28,7 @@
 #include "utils.h"
 #include "ipc.h"
 #include "synchronization.h"
+#include "ndmu_yield.h"
 
 Result GetSystemInfoHook(s64 *out, s32 type, s32 param)
 {
@@ -212,6 +213,12 @@ Result GetSystemInfoHook(s64 *out, s32 type, s32 param)
                 }
             }
 
+            break;
+        }
+
+        case 0x10005: // ndm:u radio yield handshake state
+        {
+            *out = ndmuYieldStateGet();
             break;
         }
 

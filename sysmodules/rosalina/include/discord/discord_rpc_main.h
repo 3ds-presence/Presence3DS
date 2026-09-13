@@ -42,8 +42,9 @@ extern char g_discord_status[64];
 extern LightLock g_discord_lock;
 extern Handle g_rpc_should_stop_event;
 
-#define PRESENCE3DS_VERSION "v1.2.0"
+#define PRESENCE3DS_VERSION "v1.2.1"
 
 void DiscordRPC_Init(void);
 void DiscordRPC_Start(void);
+void DiscordRPC_StartWithNetRetry(int maxRetries, u64 retryDelayNs);
 void DiscordRPC_Stop(void);

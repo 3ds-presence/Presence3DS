@@ -29,6 +29,7 @@
 #include "synchronization.h"
 #include "ipc.h"
 #include "debug.h"
+#include "ndmu_yield.h"
 
 #define MAX_DEBUG 3
 
@@ -206,6 +207,26 @@ Result KernelSetStateHook(u32 type, u32 varg1, u32 varg2, u32 varg3)
             {
                 KProcessHandleTable *table = handleTableOfProcess(currentCoreContext->objectContext.currentProcess);
                 signalPluginEvent = (KEvent *)KProcessHandleTable__ToKAutoObject(table, varg1);
+            }
+            break;
+        }
+        case 0x10008: // ndm:u radio yield handshake control
+        {
+            switch(varg1)
+            {
+                case 0: // Rosalina released the radio: acknowledge
+                    ndmuYieldStateSetBits(NDMU_BIT_ACK);
+                    break;
+                case 1: // Rosalina restored the radio: reset the handshake
+                    ndmuYieldStateReset();
+                    break;
+                case 2: // Refused: gdb / input redirection own the radio.
+                        // Withdraw the request in case the game can work around it.
+                    
+                    // Clear the request bit to stop the game from waiting
+                    // for an ack that will never come.
+                    ndmuYieldStateClearBits(NDMU_BIT_ASK);
+                    break;
             }
             break;
         }

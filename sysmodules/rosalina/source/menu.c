@@ -41,6 +41,7 @@
 #include "shell.h"
 #include "discord/discord_menu.h"
 #include "discord/discord_rpc_main.h"
+#include "discord/ndm_yield.h"
 
 //#define ROSALINA_MENU_SELF_SCREENSHOT 1 // uncomment this to enable the feature
 
@@ -374,6 +375,8 @@ void menuThreadMain(void)
     while(!preTerminationRequested)
     {
         svcSleepThread(50 * 1000 * 1000LL);
+        ndmYieldProcess();
+
         if (menuShouldExit)
             continue;
 
