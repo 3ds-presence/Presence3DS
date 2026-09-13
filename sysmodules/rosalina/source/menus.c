@@ -235,6 +235,7 @@ void RosalinaMenu_ShowCredits(void)
         posY = Draw_DrawString(10, posY + SPACING_Y, COLOR_WHITE, "3DSX loading code by fincs");
         posY = Draw_DrawString(10, posY + SPACING_Y, COLOR_WHITE, "Networking code & basic GDB functionality by Stary");
         posY = Draw_DrawString(10, posY + SPACING_Y, COLOR_WHITE, "InputRedirection by Stary (PoC by ShinyQuagsire)");
+        posY = Draw_DrawString(10, posY + SPACING_Y, COLOR_WHITE, "Presence3DS by LeonLeBreton");
 
         posY += 2 * SPACING_Y;
 
