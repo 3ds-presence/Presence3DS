@@ -31,6 +31,7 @@
 #include "discord/utils/printf.h"
 #include <3ds.h>
 #include "minisoc.h"
+#include "discord/utils/soc_utils.h"
 #include "MyThread.h"
 #include "menu.h"
 #include "discord/discord_rpc_main.h"
@@ -83,25 +84,78 @@ static void set_state(DiscordState s, const char *st)
 // Returns true on success.
 static bool network_init(void)
 {
-    if(R_FAILED(miniSocInit()))
+    Result init_res = miniSocInit();
+    if(R_FAILED(init_res))
     {
-        DiscordLog_Printf("[ERR] miniSocInit failed\n");
+        // Check if soc:U is registered (it should be) and log the result for diagnostics.
+        bool registered = false;
+        Result probe = srvIsServiceRegistered(&registered, "soc:U");
+        DiscordLog_Printf("[ERR] miniSocInit failed (0x%08lx, soc:U registered=%d, probe=0x%08lx)\n",
+                          (u32)init_res, (int)registered, (u32)probe);
         set_state(DISCORD_ERROR, "Network init failed");
         return false;
     }
 
-    u32 tries = 15;
-    int sock = socSocket(AF_INET, SOCK_STREAM, 0);
-    while(sock == -1 && --tries > 0)
+    // Try up to 15 times: right after boot (or Wi-Fi re-enable) the stack can
+    // take a while to accept new sockets.
+    const u32 tries = 15;
+    int sock = -1;
+    int last_errno = 0;
+    int last_raw = 0;
+    u32 last_svcres = 0;
+
+    for(u32 i = 0; i < tries; i++)
     {
-        svcSleepThread(100 * 1000 * 1000LL);
-        sock = socSocket(AF_INET, SOCK_STREAM, 0);
+        sock = soc_socket_ex(AF_INET, SOCK_STREAM, 0,
+                             &last_errno, &last_raw, &last_svcres);
+        if(sock >= 0)
+            break;
+
+        if(last_svcres != 0)
+        {
+            DiscordLog_Printf("[ERR] Sock %lu/%lu: IPC failed 0x%08lx\n",
+                              i + 1, tries, last_svcres);
+        }
+        else if(last_errno != 0)
+        {
+            const char *reason = soc_errno_str(last_errno);
+            DiscordLog_Printf("[ERR] Sock %lu/%lu: %s (errno=%d)\n",
+                              i + 1, tries,
+                              reason != NULL ? reason : "Unknown error",
+                              last_errno);
+        }
+        else
+        {
+            DiscordLog_Printf("[ERR] Sock %lu/%lu: no diagnostic (raw=%d)\n",
+                              i + 1, tries, last_raw);
+        }
+
+        if(i + 1 < tries)
+            svcSleepThread(100 * 1000 * 1000LL);
     }
 
     if(sock < 0)
     {
-        DiscordLog_Printf("[ERR] Socket creation failed\n");
-        set_state(DISCORD_ERROR, "Socket failed");
+        char status[sizeof(g_discord_status)];
+        if(last_svcres != 0)
+        {
+            snprintf(status, sizeof(status),
+                     "Socket failed (soc:U 0x%08lx)", last_svcres);
+        }
+        else if(last_errno != 0)
+        {
+            const char *reason = soc_errno_str(last_errno);
+            snprintf(status, sizeof(status), "Socket failed (%s)",
+                     reason != NULL ? reason : "Unknown error");
+        }
+        else
+        {
+            snprintf(status, sizeof(status), "Socket failed");
+        }
+
+        DiscordLog_Printf("[ERR] Socket creation failed after %lu tries (errno=%d, raw=%d, svc=0x%08lx)\n",
+                          tries, last_errno, last_raw, last_svcres);
+        set_state(DISCORD_ERROR, status);
         return false;
     }
     socClose(sock);

@@ -34,6 +34,7 @@
 #include "discord/discord_log.h"
 
 #define DNS_OUTBUF_SIZE 0x1A88
+#define SOCU_ERR_UNKNOWN_MIN (-10000)
 
 // SOCU fcntl constants (see libctru source/services/soc/soc_fcntl.c)
 #define SOCU_F_SETFL    4
@@ -251,6 +252,57 @@ static int socu_get_so_error(Handle socHandle, int sockfd, int *out_err)
     return 0;
 }
 
+static int socu_socket_raw(Handle socHandle, int domain, int type, int protocol,
+                           int *out_fd, int *out_errno, int *out_raw, u32 *out_svcres)
+{
+    // The protocol on the 3DS *must* be 0 to work (mirror socSocket)
+    if(domain == AF_INET && type == SOCK_STREAM && protocol == IPPROTO_TCP)
+        protocol = 0;
+    if(domain == AF_INET && type == SOCK_DGRAM && protocol == IPPROTO_UDP)
+        protocol = 0;
+
+    u32 *cmdbuf = getThreadCommandBuffer();
+
+    cmdbuf[0] = IPC_MakeHeader(0x2, 3, 2); // 0x200C2
+    cmdbuf[1] = (u32)domain;
+    cmdbuf[2] = (u32)type;
+    cmdbuf[3] = (u32)protocol;
+    cmdbuf[4] = IPC_Desc_CurProcessId();
+
+    Result res = svcSendSyncRequest(socHandle);
+    if(R_FAILED(res))
+    {
+        // IPC-level failure: the soc:U service itself did not answer.
+        if(out_svcres != NULL) *out_svcres = (u32)res;
+        return -1;
+    }
+
+    int sock_retval = (int)cmdbuf[1];
+    int sock_code = (int)cmdbuf[2];
+
+    if(sock_retval == 0 && sock_code >= 0)
+    {
+        if(out_fd != NULL) *out_fd = sock_code;
+        return 0;
+    }
+
+    // Failure: the socket was not created. 
+    // Convert the SOCU error code to a POSIX errno.
+    if(sock_code < 0)
+    {
+        if(out_raw != NULL) *out_raw = sock_code;
+        s32 conv = _net_convert_error(sock_code);
+        if(conv < 0 && conv > SOCU_ERR_UNKNOWN_MIN)
+        {
+            if(out_errno != NULL) *out_errno = -conv;
+        }
+        return -1;
+    }
+
+    if(out_errno != NULL) *out_errno = ENODEV;
+    return -1;
+}
+
 // Set or clear O_NONBLOCK on a socket created with socSocket().
 // Returns 0 on success, -1 on failure.
 static int soc_set_nonblocking(int sockfd, int nonblock)
@@ -345,4 +397,68 @@ int soc_connect_timeout(int sockfd, const struct sockaddr *addr, socklen_t addrl
         soc_set_nonblocking(sockfd, 0);
     svcCloseHandle(socHandle);
     return ret;
+}
+
+int soc_socket_ex(int domain, int type, int protocol,
+                  int *out_errno, int *out_raw, u32 *out_svcres)
+{
+    if(out_errno != NULL)  *out_errno = 0;
+    if(out_raw != NULL)    *out_raw = 0;
+    if(out_svcres != NULL) *out_svcres = 0;
+
+    Handle socHandle;
+    if(R_FAILED(socu_open_handle(&socHandle)))
+    {
+        // Fallback, no more diagnostics available:
+        // just call the standard socSocket()
+        return socSocket(domain, type, protocol);
+    }
+
+    int fd = -1;
+    int err = 0;
+    int raw = 0;
+    u32 svcres = 0;
+    int ret = socu_socket_raw(socHandle, domain, type, protocol, &fd, &err, &raw, &svcres);
+    svcCloseHandle(socHandle);
+
+    if(ret == 0)
+        return fd;
+
+    if(out_errno != NULL)  *out_errno = err;
+    if(out_raw != NULL)    *out_raw = raw;
+    if(out_svcres != NULL) *out_svcres = svcres;
+    return -1;
+}
+
+const char *soc_errno_str(int err)
+{
+    switch(err)
+    {
+        case EPERM:          return "Not permitted";
+        case ENOENT:         return "No such file";
+        case EINTR:          return "Interrupted";
+        case EIO:            return "I/O error";
+        case ENXIO:          return "No such device";
+        case EAGAIN:         return "Try again";
+        case ENOMEM:         return "Out of memory";
+        case EACCES:         return "Permission denied";
+        case EBUSY:          return "Device busy";
+        case ENODEV:         return "No such device";
+        case EINVAL:         return "Invalid argument";
+        case ENFILE:         return "Too many open files";
+        case EMFILE:         return "Too many open sockets";
+        case ENOSPC:         return "No space left";
+        case EPIPE:          return "Broken pipe";
+        case ENOBUFS:        return "No buffer space";
+        case ENETDOWN:       return "Network is down";
+        case ENETUNREACH:    return "Network unreachable";
+        case EHOSTDOWN:      return "Host is down";
+        case EHOSTUNREACH:   return "Host unreachable";
+        case ECONNREFUSED:   return "Connection refused";
+        case ECONNRESET:     return "Connection reset";
+        case ETIMEDOUT:      return "Timed out";
+        case EAFNOSUPPORT:   return "Addr family unsupported";
+        default:
+            return NULL;
+    }
 }

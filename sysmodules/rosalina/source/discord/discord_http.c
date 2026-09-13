@@ -92,10 +92,13 @@ int discord_http_post(const char *host, u16 port, const char *path,
     }
 
     // Create socket
-    sockfd = socSocket(AF_INET, SOCK_STREAM, 0);
+    int sock_err = 0;
+    sockfd = soc_socket_ex(AF_INET, SOCK_STREAM, 0, &sock_err, NULL, NULL);
     if(sockfd < 0)
     {
-        DiscordLog_Printf("[ERR] Socket creation failed: %d\n", sockfd);
+        const char *reason = soc_errno_str(sock_err);
+        DiscordLog_Printf("[ERR] Socket creation failed: %s\n",
+                          reason != NULL ? reason : "unknown");
         return -1;
     }
 
