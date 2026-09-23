@@ -35,6 +35,7 @@
 #include "discord/discord_update.h"
 #include "discord/discord_rpc_main.h" // PRESENCE3DS_VERSION
 #include "discord/discord_log.h"
+#include "discord/utils/discord_led.h"
 
 static volatile bool g_upd_available = false;
 
@@ -194,6 +195,7 @@ bool DiscordUpdate_CheckRemote(const char *ver)
     {
         g_upd_available = true;
         upd_write_file(ver);
+        DiscordUpdate_BlinkLed();
     }
     else
     {
