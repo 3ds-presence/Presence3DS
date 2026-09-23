@@ -120,6 +120,12 @@ static bool upd_read_file(char *ver, u32 max_len)
 
 static void upd_write_file(const char *ver)
 {
+    char cur[32];
+
+    if(upd_read_file(cur, sizeof(cur)) &&
+       DiscordUpdate_CompareVersions(cur, ver) >= 0)
+        return; // Marker already up to date, nothing to change
+
     Handle h;
     u32 len = (u32)strlen(ver);
 
