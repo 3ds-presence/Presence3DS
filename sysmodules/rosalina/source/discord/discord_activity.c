@@ -40,6 +40,7 @@
 
 #define SMDH_READ_SIZE  0x36C0
 #define SMDH_NUM_TITLES 0x10
+#define SMDH_NUM_LANGS  12
 #define SMDH_TITLES_OFFSET 0x0008
 #define SMDH_TITLE_ENTRY_SIZE 0x200
 #define SMDH_SHORT_DESC_OFFSET 0x00
@@ -51,33 +52,22 @@
 // Static buffer for SMDH data to avoid stack overflow (RPC thread stack is only 16KB)
 static u8 smdh_buffer[SMDH_READ_SIZE] __attribute__((aligned(32)));
 
-// SMDH language index for each CFG_Language value
-static const u8 smdh_lang_for_cfg[] = {
-    0, // CFG_LANGUAGE_JP -> Japanese (SMDH index 0)
-    1, // CFG_LANGUAGE_EN -> English (SMDH index 1)
-    2, // CFG_LANGUAGE_FR -> French (SMDH index 2)
-    3, // CFG_LANGUAGE_DE -> German (SMDH index 3)
-    4, // CFG_LANGUAGE_IT -> Italian (SMDH index 4)
-    5, // CFG_LANGUAGE_ES -> Spanish (SMDH index 5)
-    6, // CFG_LANGUAGE_ZH -> Chinese (SMDH index 6)
-    7, // CFG_LANGUAGE_KO -> Korean (SMDH index 7)
-    1, // CFG_LANGUAGE_NL -> Dutch -> English fallback
-    1, // CFG_LANGUAGE_PT -> Portuguese -> English fallback
-    1, // CFG_LANGUAGE_RU -> Russian -> English fallback
-    6, // CFG_LANGUAGE_TW -> Traditional Chinese -> Chinese
-};
-
 // Fallback language order (after system language, checked one by one)
 static const u8 smdh_lang_fallback[] = {
-    1, // English
-    2, // French
-    3, // German
-    4, // Italian
-    5, // Spanish
-    0, // Japanese
-    6, // Chinese
-    7, // Korean
+    1,  // English
+    2,  // French
+    3,  // German
+    4,  // Italian
+    5,  // Spanish
+    0,  // Japanese
+    6,  // Chinese
+    7,  // Korean
+    8,  // Dutch
+    9,  // Portuguese
+    10, // Russian
+    11, // Traditional Chinese
 };
+_Static_assert(sizeof(smdh_lang_fallback) == SMDH_NUM_LANGS, "Fallback array size mismatch");
 
 // Read the SMDH (icon section) from a title's ExeFS
 static Result read_smdh(u64 titleId, FS_MediaType mediaType, u8 *smdh_out)
@@ -171,27 +161,18 @@ static void extract_smdh_strings(const u8 *smdh,
     name_out[0] = '\0';
     publisher_out[0] = '\0';
 
-    // Debug: dump short desc of all 8 SMDH languages (first 8 UTF-16 chars each)
-    // for(u32 lang = 0; lang < 8; lang++)
-    // {
-    //     const u16 *desc = (const u16 *)(smdh + SMDH_TITLES_OFFSET + lang * SMDH_TITLE_ENTRY_SIZE + SMDH_SHORT_DESC_OFFSET);
-    //     DiscordLog_Printf("[DBG] L%d:%04X%04X%04X%04X%04X%04X%04X%04X\n",
-    //         lang, desc[0], desc[1], desc[2], desc[3], desc[4], desc[5], desc[6], desc[7]);
-    // }
-
     // Try system language first
-    u8 cfgLang = CFG_LANGUAGE_EN;
-    u8 smdhLang = 1; // English default
+    u8 smdhLang = CFG_LANGUAGE_EN; // English default
     if(!g_pref_values[PREFS_FORCE_ENGLISH] && R_SUCCEEDED(cfguInit()))
     {
+        u8 cfgLang = 0;
         CFGU_GetSystemLanguage(&cfgLang);
         cfguExit();
-        if(cfgLang < sizeof(smdh_lang_for_cfg))
-            smdhLang = smdh_lang_for_cfg[cfgLang];
+        if(cfgLang < SMDH_NUM_LANGS)
+            smdhLang = cfgLang;
     }
 
-    DiscordLog_Printf("[DBG] System language=%d -> SMDH index=%d, region free=%d\n",
-                      cfgLang, smdhLang, smdh_is_region_free(smdh));
+    DiscordLog_Printf("[DBG] SMDH index=%d, region free=%d\n", smdhLang, smdh_is_region_free(smdh));
 
     if(smdh_lang_has_name(smdh, smdhLang))
     {
