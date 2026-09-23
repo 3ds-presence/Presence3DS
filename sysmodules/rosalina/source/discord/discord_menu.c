@@ -69,6 +69,7 @@ Menu discordMenu = {
         { "View Log", METHOD, .method = &DiscordMenu_ViewLog },
         { "Reload Config", METHOD, .method = &DiscordMenu_ReloadConfig },
         { "User Preferences", METHOD, .method = &DiscordMenu_EditPrefs },
+        { "RPC Language", METHOD, .method = &DiscordMenu_EditRpcLanguage },
         {},
     }
 };
@@ -331,6 +332,53 @@ void DiscordMenu_EditPrefs(void)
             UserPrefs_Save();
             break;
         }
+    }
+    while(!menuShouldExit);
+}
+
+void DiscordMenu_EditRpcLanguage(void)
+{
+    UserPrefs_Load();
+
+    u8 current = g_pref_values[PREFS_RPC_LANGUAGE];
+    if(current >= RPC_LANGUAGE_COUNT)
+        current = RPC_LANGUAGE_AUTO;
+    u8 selection = current;
+
+    do
+    {
+        Draw_Lock();
+        Draw_ClearFramebuffer();
+        Draw_DrawString(10, 10, COLOR_TITLE, "Discord RPC -- RPC Language");
+        Draw_DrawString(10, 22, COLOR_WHITE, "A: select & save   B: cancel");
+
+        u32 y = 34;
+        for(u32 i = 0; i < RPC_LANGUAGE_COUNT; i++)
+        {
+            u32 color = i == selection ? RGB565(0x1F, 0x3F, 0x00) : COLOR_WHITE;
+
+            Draw_DrawString(10, y, color, i == current ? "*" : " ");
+            Draw_DrawFormattedString(24, y, color, "%s", g_rpc_language_names[i]);
+            y += 14;
+        }
+
+        DiscordMenu_DrawVersionFooter(10, SCREEN_BOT_HEIGHT - 20);
+        Draw_FlushFramebuffer();
+        Draw_Unlock();
+
+        u32 pressed = waitInput();
+        if(pressed & KEY_DOWN)
+            selection = (selection + 1) % RPC_LANGUAGE_COUNT;
+        else if(pressed & KEY_UP)
+            selection = (selection + RPC_LANGUAGE_COUNT - 1) % RPC_LANGUAGE_COUNT;
+        else if(pressed & KEY_A)
+        {
+            g_pref_values[PREFS_RPC_LANGUAGE] = selection;
+            UserPrefs_Save();
+            break;
+        }
+        else if(pressed & KEY_B)
+            break;
     }
     while(!menuShouldExit);
 }

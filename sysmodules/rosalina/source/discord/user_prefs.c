@@ -25,6 +25,7 @@
  */
 
 #include <string.h>
+#include <stdlib.h>
 #include <3ds.h>
 #include "discord/utils/printf.h"
 #include "discord/user_prefs.h"
@@ -32,38 +33,60 @@
 #include "discord/discord_log.h"
 
 // All user preferences:
-// key (config file), label (menu), default value.
+// key (config file), label (menu), type, default value, max value.
 // Empty label means the preference is hidden in the menu.
 const UserPrefMeta g_user_prefs[PREFS_COUNT] = {
-    [PREFS_HIDE_MII]     = { "HIDE_MII",           "Hide Mii in Presence", false },
-    [PREFS_HIDE_HOME]    = { "HIDE_HOME",          "Hide Home activity",   false },
-    [PREFS_AUTO_START]   = { "AUTO_START_AT_BOOT", "Auto-start at boot",   false },
-    [PREFS_FORCE_ENGLISH] = { "FORCE_ENGLISH",     "Force English name of the game", false },
-    [PREFS_DISABLE_UPDATE_LED] = { "DISABLE_UPDATE_LED", "Disable LED blink on update", false },
-    [PREFS_DISABLE_CUSTOMRPC] = { "DISABLE_CUSTOMRPC", "Disable displaying game state", false },
-    [PREFS_ALLOW_UNSAFE] = { "ALLOW_UNSAFE",       "",                     false },
+    [PREFS_HIDE_MII]           = { "HIDE_MII",           "Hide Mii in Presence",          PREF_BOOL, 0, 0 },
+    [PREFS_HIDE_HOME]          = { "HIDE_HOME",          "Hide Home activity",            PREF_BOOL, 0, 0 },
+    [PREFS_AUTO_START]         = { "AUTO_START_AT_BOOT", "Auto-start at boot",            PREF_BOOL, 0, 0 },
+    [PREFS_DISABLE_UPDATE_LED] = { "DISABLE_UPDATE_LED", "Disable LED blink on update",   PREF_BOOL, 0, 0 },
+    [PREFS_DISABLE_CUSTOMRPC]  = { "DISABLE_CUSTOMRPC",  "Disable displaying game state", PREF_BOOL, 0, 0 },
+    [PREFS_ALLOW_UNSAFE]       = { "ALLOW_UNSAFE",       "",                              PREF_BOOL, 0, 0 },
+    [PREFS_RPC_LANGUAGE]       = { "RPC_LANGUAGE",       "",                              PREF_INT,  RPC_LANGUAGE_AUTO, RPC_LANGUAGE_MAX },
 };
 
-bool g_pref_values[PREFS_COUNT] = { false };
+const char *const g_rpc_language_names[RPC_LANGUAGE_COUNT] = {
+    "System language",
+    "Japanese", "English", "French", "German", "Italian", "Spanish",
+    "Simplified Chinese", "Korean", "Dutch", "Portuguese", "Russian",
+    "Traditional Chinese",
+};
+
+u8 g_pref_values[PREFS_COUNT] = { 0 };
 bool g_prefs_loaded = false;
 
 // Helper: parse "true"/"false" (case-insensitive) into *out
-static bool parse_bool(const char *val, bool *out)
+static bool parse_bool(const char *val, u8 *out)
 {
     // Skip leading whitespace
     while(*val == ' ' || *val == '\t') val++;
 
     if(strcasecmp(val, "true") == 0 || strcmp(val, "1") == 0)
     {
-        *out = true;
+        *out = 1;
         return true;
     }
     if(strcasecmp(val, "false") == 0 || strcmp(val, "0") == 0)
     {
-        *out = false;
+        *out = 0;
         return true;
     }
     return false;
+}
+
+static bool parse_int(const char *val, u8 *out, u8 max)
+{
+    while(*val == ' ' || *val == '\t') val++;
+
+    if(*val < '0' || *val > '9')
+        return false;
+
+    unsigned long v = strtoul(val, NULL, 10);
+    if(v > max)
+        return false;
+
+    *out = (u8)v;
+    return true;
 }
 
 // Callback for ConfigReader_Parse using the metadata table
@@ -75,7 +98,15 @@ static bool prefs_handler(const char *key, const char *value, void *userdata)
     {
         if(strcasecmp(key, g_user_prefs[i].key) == 0)
         {
-            parse_bool(value, &g_pref_values[i]);
+            if(g_user_prefs[i].type == PREF_INT)
+            {
+                // Out of range or malformed values fall back to the default
+                if(!parse_int(value, &g_pref_values[i], g_user_prefs[i].max))
+                    g_pref_values[i] = g_user_prefs[i].def;
+            }
+            else
+                parse_bool(value, &g_pref_values[i]);
+
             break;
         }
     }
@@ -129,9 +160,13 @@ Result UserPrefs_Save(void)
     int n = 0;
     for(u32 i = 0; i < PREFS_COUNT && len < (int)sizeof(buf); i++)
     {
-        n = snprintf(buf + len, sizeof(buf) - len, "%s=%s\n",
-                     g_user_prefs[i].key,
-                     g_pref_values[i] ? "true" : "false");
+        if(g_user_prefs[i].type == PREF_INT)
+            n = snprintf(buf + len, sizeof(buf) - len, "%s=%u\n",
+                         g_user_prefs[i].key, (unsigned)g_pref_values[i]);
+        else
+            n = snprintf(buf + len, sizeof(buf) - len, "%s=%s\n",
+                         g_user_prefs[i].key,
+                         g_pref_values[i] ? "true" : "false");
         if(n < 0)
         {
             res = -1;

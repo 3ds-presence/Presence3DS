@@ -32,32 +32,48 @@
 
 #define USER_PREFS_PATH "/presence3ds/user_prefs.conf"
 
+// Language of the game name sent in the RPC payload:
+// 0 = console language, 1..12 = SMDH language index + 1
+#define RPC_LANGUAGE_AUTO   0
+#define RPC_LANGUAGE_MAX    12
+#define RPC_LANGUAGE_COUNT  (RPC_LANGUAGE_MAX + 1)
+
 // Identifier for each user preference (also used as index into g_user_prefs)
 typedef enum {
     PREFS_HIDE_MII,
     PREFS_HIDE_HOME,
     PREFS_AUTO_START,
-    PREFS_FORCE_ENGLISH,
     PREFS_DISABLE_UPDATE_LED,
     PREFS_ALLOW_UNSAFE,
     PREFS_DISABLE_CUSTOMRPC,
+    PREFS_RPC_LANGUAGE,
     PREFS_COUNT
 } UserPrefId;
+
+typedef enum {
+    PREF_BOOL,
+    PREF_INT,
+} UserPrefType;
 
 // Metadata describing a single user preference
 typedef struct {
     const char *key;   // key in the config file (e.g. "HIDE_MII")
     const char *label; // label shown in the menu (e.g. "Hide Mii in Presence")
-    bool        def;   // default value
+    UserPrefType type;
+    u8          def;   // default value
+    u8          max;   // PREF_INT only: inclusive upper bound
 } UserPrefMeta;
 
 // One entry per preference
 
-// Metadatas of the preferences (key, label, default value)
+// Metadatas of the preferences
 extern const UserPrefMeta g_user_prefs[PREFS_COUNT];
 
-// Values of the preferences (true/false)
-extern bool g_pref_values[PREFS_COUNT];
+// Values of the preferences (0/1 for PREF_BOOL)
+extern u8 g_pref_values[PREFS_COUNT];
+
+// Names indexed by the RPC language value
+extern const char *const g_rpc_language_names[RPC_LANGUAGE_COUNT];
 
 extern bool g_prefs_loaded;
 

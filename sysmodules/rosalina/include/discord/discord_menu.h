@@ -35,5 +35,6 @@ void DiscordMenu_Stop(void);
 void DiscordMenu_ViewLog(void);
 void DiscordMenu_ReloadConfig(void);
 void DiscordMenu_EditPrefs(void);
+void DiscordMenu_EditRpcLanguage(void);
 void DiscordMenu_ShowAction(void);
 void DiscordMenu_DrawVersionFooter(u32 x, u32 y);

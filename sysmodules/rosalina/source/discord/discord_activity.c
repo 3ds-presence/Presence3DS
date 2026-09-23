@@ -68,6 +68,7 @@ static const u8 smdh_lang_fallback[] = {
     11, // Traditional Chinese
 };
 _Static_assert(sizeof(smdh_lang_fallback) == SMDH_NUM_LANGS, "Fallback array size mismatch");
+_Static_assert(RPC_LANGUAGE_MAX == SMDH_NUM_LANGS, "RPC language count mismatch");
 
 // Read the SMDH (icon section) from a title's ExeFS
 static Result read_smdh(u64 titleId, FS_MediaType mediaType, u8 *smdh_out)
@@ -153,7 +154,7 @@ static void smdh_copy_lang(const u8 *smdh, u8 langIndex,
 }
 
 // Extract the name (short or long description) and publisher from SMDH data
-// Priority: system language -> English -> other languages
+// Priority: RPC language preference -> system language -> fallback list
 static void extract_smdh_strings(const u8 *smdh,
                                   char *name_out, size_t name_size,
                                   char *publisher_out, size_t publisher_size)
@@ -161,9 +162,12 @@ static void extract_smdh_strings(const u8 *smdh,
     name_out[0] = '\0';
     publisher_out[0] = '\0';
 
-    // Try system language first
     u8 smdhLang = CFG_LANGUAGE_EN; // English default
-    if(!g_pref_values[PREFS_FORCE_ENGLISH] && R_SUCCEEDED(cfguInit()))
+    u8 prefLang = g_pref_values[PREFS_RPC_LANGUAGE];
+
+    if(prefLang > RPC_LANGUAGE_AUTO && prefLang <= RPC_LANGUAGE_MAX)
+        smdhLang = prefLang - 1;
+    else if(R_SUCCEEDED(cfguInit()))
     {
         u8 cfgLang = 0;
         CFGU_GetSystemLanguage(&cfgLang);
@@ -177,7 +181,7 @@ static void extract_smdh_strings(const u8 *smdh,
     if(smdh_lang_has_name(smdh, smdhLang))
     {
         smdh_copy_lang(smdh, smdhLang, name_out, name_size, publisher_out, publisher_size);
-        DiscordLog_Printf("[DBG] Using system lang %d: name=%s pub=%s\n", smdhLang, name_out, publisher_out);
+        DiscordLog_Printf("[DBG] Using lang %d: name=%s pub=%s\n", smdhLang, name_out, publisher_out);
         return;
     }
 
