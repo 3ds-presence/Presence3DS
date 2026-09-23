@@ -39,11 +39,9 @@ You can connect to the official 3DS Presence server, or to your own server if yo
 - `Disable displaying game state`: If enabled, the extra information about the game state (like level, score, etc) will not be sent to the 3DS Presence server.
 
 ## Extra information about the game
-By default, Presence3DS will only send the game title ID and name to the 3DS Presence server. However, it is possible to add extra information about the current state of the game being played (like level, score, etc).
+By default, Presence3DS will only send the game title ID and name to the 3DS Presence server. However, for some game titles, you can display extra information about the current state of the game being played (like level, score, etc).
 
-To provide this extra information, you need a `<TITLEID>.txt` file for each game you want to add extra information for, and place it in the `presence3ds/rpc` folder of your SD card. 
-
-You can find all the available scripts, and a guide to create your own, on the [Add-ons repository](https://github.3ds-presence/RPC-AddOns).
+See compatible games [here](https://github.com/3ds-presence/Activity-Generator#currently-supported-games)
 
 ## Installation and upgrade
 Presence3DS requires [boot9strap](https://github.com/SciresM/boot9strap) to run.
