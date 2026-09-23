@@ -53,4 +53,6 @@ Please refer to the [3DS-Presence website](http://3ds-presence.top/) to get the 
 This project could not have been possible without the work of the Luma3DS team, and the many contributors to the 3DS homebrew scene.
 Please refer to the original [Luma3DS README](https://github.com/LumaTeam/Luma3DS#credits) for a full list of credits.
 
+Use [eyalroz/printf library](https://github.com/eyalroz/printf) (MIT License)
+
 This fork was created by LeonLeBreton.
