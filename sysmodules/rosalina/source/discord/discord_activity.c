@@ -45,6 +45,8 @@
 #define SMDH_SHORT_DESC_OFFSET 0x00
 #define SMDH_LONG_DESC_OFFSET 0x80
 #define SMDH_PUBLISHER_OFFSET 0x180
+#define SMDH_REGION_LOCKOUT_OFFSET 0x2018
+#define SMDH_REGION_BITS_MASK 0x7F
 
 // Static buffer for SMDH data to avoid stack overflow (RPC thread stack is only 16KB)
 static u8 smdh_buffer[SMDH_READ_SIZE] __attribute__((aligned(32)));
@@ -126,10 +128,22 @@ static Result read_smdh(u64 titleId, FS_MediaType mediaType, u8 *smdh_out)
     return res;
 }
 
-// Check if an SMDH language index has a non-empty long description
+static bool smdh_is_region_free(const u8 *smdh)
+{
+    u32 regionLockout = *(const u32 *)(smdh + SMDH_REGION_LOCKOUT_OFFSET);
+    return (regionLockout & SMDH_REGION_BITS_MASK) == SMDH_REGION_BITS_MASK;
+}
+
+// Region free (homebrew): short, region-locked: long description. 
+static u32 smdh_name_offset(const u8 *smdh)
+{
+    return smdh_is_region_free(smdh) ? SMDH_SHORT_DESC_OFFSET : SMDH_LONG_DESC_OFFSET;
+}
+
+// Check if an SMDH language index has a non-empty name
 static bool smdh_lang_has_name(const u8 *smdh, u8 langIndex)
 {
-    const u16 *desc = (const u16 *)(smdh + SMDH_TITLES_OFFSET + langIndex * SMDH_TITLE_ENTRY_SIZE + SMDH_LONG_DESC_OFFSET);
+    const u16 *desc = (const u16 *)(smdh + SMDH_TITLES_OFFSET + langIndex * SMDH_TITLE_ENTRY_SIZE + smdh_name_offset(smdh));
     return desc[0] != 0;
 }
 
@@ -139,16 +153,16 @@ static void smdh_copy_lang(const u8 *smdh, u8 langIndex,
                             char *publisher_out, size_t publisher_size)
 {
     u32 entryOffset = SMDH_TITLES_OFFSET + langIndex * SMDH_TITLE_ENTRY_SIZE;
-    const u16 *longDesc = (const u16 *)(smdh + entryOffset + SMDH_LONG_DESC_OFFSET);
+    const u16 *name = (const u16 *)(smdh + entryOffset + smdh_name_offset(smdh));
     const u16 *publisher = (const u16 *)(smdh + entryOffset + SMDH_PUBLISHER_OFFSET);
 
-    utf16_to_utf8((uint8_t *)name_out, longDesc, name_size - 1);
+    utf16_to_utf8((uint8_t *)name_out, name, name_size - 1);
     name_out[name_size - 1] = '\0';
     utf16_to_utf8((uint8_t *)publisher_out, publisher, publisher_size - 1);
     publisher_out[publisher_size - 1] = '\0';
 }
 
-// Extract the short description (name) and publisher from SMDH data
+// Extract the name (short or long description) and publisher from SMDH data
 // Priority: system language -> English -> other languages
 static void extract_smdh_strings(const u8 *smdh,
                                   char *name_out, size_t name_size,
@@ -176,7 +190,8 @@ static void extract_smdh_strings(const u8 *smdh,
             smdhLang = smdh_lang_for_cfg[cfgLang];
     }
 
-    DiscordLog_Printf("[DBG] System language=%d -> SMDH index=%d\n", cfgLang, smdhLang);
+    DiscordLog_Printf("[DBG] System language=%d -> SMDH index=%d, region free=%d\n",
+                      cfgLang, smdhLang, smdh_is_region_free(smdh));
 
     if(smdh_lang_has_name(smdh, smdhLang))
     {
