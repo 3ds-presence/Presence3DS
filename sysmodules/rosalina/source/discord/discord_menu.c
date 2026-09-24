@@ -167,7 +167,7 @@ void DiscordMenu_Start(void)
 
 void DiscordMenu_Stop(void)
 {
-    DiscordRPC_Stop();
+    DiscordRPC_Stop(false);
 }
 
 void DiscordMenu_ReloadConfig(void)

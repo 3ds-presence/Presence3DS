@@ -205,7 +205,7 @@ static void discord_rpc_start_task(void *argdata)
 static void discord_rpc_stop_task(void *argdata)
 {
     (void)argdata;
-    DiscordRPC_Stop();
+    DiscordRPC_Stop(true);
 }
 
 static bool s_initialBootComplete = false;
@@ -250,7 +250,7 @@ static void handlePreTermNotification(u32 notificationId)
     // Stop Discord RPC cleanly while network is still available.
     // PM will wait for us (via notification 0x2001) before killing network services.
     if(g_discord_state != DISCORD_STOPPED)
-        DiscordRPC_Stop();
+        DiscordRPC_Stop(false);
 
     // Signal PM that we're done with network-dependent cleanup.
     // If Discord RPC was never started, signal immediately.

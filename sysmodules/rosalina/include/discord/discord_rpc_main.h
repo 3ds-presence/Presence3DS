@@ -47,4 +47,4 @@ extern Handle g_rpc_should_stop_event;
 void DiscordRPC_Init(void);
 void DiscordRPC_Start(void);
 void DiscordRPC_StartWithNetRetry(int maxRetries, u64 retryDelayNs);
-void DiscordRPC_Stop(void);
+void DiscordRPC_Stop(bool sleep);

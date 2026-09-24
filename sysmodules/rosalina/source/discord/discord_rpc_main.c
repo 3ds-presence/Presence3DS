@@ -57,6 +57,7 @@ static bool is_initialized = false;
 static MyThread g_rpcThread;
 static u8 CTR_ALIGN(8) g_rpcThreadStack[0x4000];
 static volatile bool g_shouldStop;
+static volatile bool g_stopSleep;
 static volatile bool g_rpcStopping;
 static Handle g_rpcStartedEvent;
 static u32 s_rpcYieldGen;
@@ -335,6 +336,7 @@ static ActivityResult run_activity_loop(void)
 void DiscordRPC_ThreadMain(void)
 {
     active_session = false;
+    g_stopSleep = false;
     // Sample the yield generation: any release after this point means this
     // thread must exit as soon as it notices (see yieldWantsExit()).
     s_rpcYieldGen = ndmYieldGetGeneration();
@@ -402,7 +404,7 @@ void DiscordRPC_ThreadMain(void)
     CustomRPC_UnmapPage();
     CustomRPC_ClearConfig();
     if(active_session && !ndmYieldIsActive())
-        discord_logout();
+        discord_logout(g_stopSleep);
     set_state(DISCORD_STOPPED, "Stopped");
     ndmYieldSafeSocExit();
     DiscordLog_Printf("[THREAD] Exited\n");
@@ -460,7 +462,7 @@ void DiscordRPC_Start(void)
     DiscordLog_Printf("[CMD] Thread initialized\n");
 }
 
-void DiscordRPC_Stop(void)
+void DiscordRPC_Stop(bool sleep)
 {
     // Guard against concurrent calls 
     if(g_rpcStopping)
@@ -469,6 +471,7 @@ void DiscordRPC_Stop(void)
 
     DiscordLog_Printf("[CMD] Stopping...\n");
     g_shouldStop = true;
+    g_stopSleep = sleep;
     if(g_rpc_should_stop_event != 0)
         svcSignalEvent(g_rpc_should_stop_event);
 

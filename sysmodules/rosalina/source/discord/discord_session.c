@@ -322,22 +322,27 @@ int discord_activity_heartbeat(void)
     return -1;
 }
 
-void discord_logout(void)
+void discord_logout(bool sleep)
 {
     u8 key[32];
     char auth_hex[97];
     char body[512];
     char resp[512];
     char ok[8];
+    char msg[32];
+    u8 sleep_flag = sleep ? 1 : 0;
 
     decode_aes_key(key);
-    build_auth(key, "logout", g_counter, auth_hex);
+
+    snprintf(msg, sizeof(msg), "logout&sleep=%d", sleep_flag);
+    build_auth(key, msg, g_counter, auth_hex);
 
     snprintf(body, sizeof(body),
-        "uuid=%s&auth_hex=%s",
-        g_uuid, auth_hex);
+        "uuid=%s&auth_hex=%s&sleep=%d",
+        g_uuid, auth_hex, sleep_flag);
 
-    DiscordLog_Printf("[LOGOUT] POST /api/3ds/logout counter=%llu\n", g_counter);
+    DiscordLog_Printf("[LOGOUT] POST /api/3ds/logout sleep=%d counter=%llu\n",
+                      sleep_flag, g_counter);
 
     int r = discord_http_post(g_server_host, g_server_port, API_ROUTE "logout",
                               body, NULL, resp, sizeof(resp), 0);

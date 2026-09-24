@@ -27,7 +27,6 @@
 #pragma once
 
 #include <3ds/types.h>
-#include <stdbool.h>
 
 #define API_ROUTE "/api/3ds/"
 
@@ -55,4 +54,4 @@ int discord_activity_update(char* data);
 int discord_activity_heartbeat(void);
 
 // Send logout (no-op if not active)
-void discord_logout(void);
+void discord_logout(bool sleep);
