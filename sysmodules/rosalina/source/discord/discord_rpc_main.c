@@ -42,6 +42,7 @@
 #include "discord/discord_log.h"
 #include "discord/discord_activity.h"
 #include "discord/ndm_yield.h"
+#include "discord/net_watch.h"
 #include "discord/utils/mii_utils.h"
 #include "discord/utils/sha256.h"
 #include "discord/customRPC/read_memory.h"
@@ -81,87 +82,104 @@ static void set_state(DiscordState s, const char *st)
     LightLock_Unlock(&g_discord_lock);
 }
 
-// Initialize network and verify socket creation works.
+// Initialize network and verify the soc stack accepts sockets.
 // Returns true on success.
 static bool network_init(void)
 {
     Result init_res = miniSocInit();
     if(R_FAILED(init_res))
     {
-        // Check if soc:U is registered (it should be) and log the result for diagnostics.
-        bool registered = false;
-        Result probe = srvIsServiceRegistered(&registered, "soc:U");
-        DiscordLog_Printf("[ERR] miniSocInit failed (0x%08lx, soc:U registered=%d, probe=0x%08lx)\n",
-                          (u32)init_res, (int)registered, (u32)probe);
+        DiscordLog_Printf("[ERR] miniSocInit failed (0x%08lx)\n", (u32)init_res);
         set_state(DISCORD_ERROR, "Network init failed");
         return false;
     }
 
-    // Try up to 15 times: right after boot (or Wi-Fi re-enable) the stack can
-    // take a while to accept new sockets.
-    const u32 tries = 15;
-    int sock = -1;
-    int last_errno = 0;
-    int last_raw = 0;
-    u32 last_svcres = 0;
-
-    for(u32 i = 0; i < tries; i++)
-    {
-        sock = soc_socket_ex(AF_INET, SOCK_STREAM, 0,
-                             &last_errno, &last_raw, &last_svcres);
-        if(sock >= 0)
-            break;
-
-        if(last_svcres != 0)
-        {
-            DiscordLog_Printf("[ERR] Sock %lu/%lu: IPC failed 0x%08lx\n",
-                              i + 1, tries, last_svcres);
-        }
-        else if(last_errno != 0)
-        {
-            const char *reason = soc_errno_str(last_errno);
-            DiscordLog_Printf("[ERR] Sock %lu/%lu: %s (errno=%d)\n",
-                              i + 1, tries,
-                              reason != NULL ? reason : "Unknown error",
-                              last_errno);
-        }
-        else
-        {
-            DiscordLog_Printf("[ERR] Sock %lu/%lu: no diagnostic (raw=%d)\n",
-                              i + 1, tries, last_raw);
-        }
-
-        if(i + 1 < tries)
-            svcSleepThread(100 * 1000 * 1000LL);
-    }
-
+    // Sanity check: can the stack hand out a socket?
+    // (real connectivity is proven by the login POST right after)
+    int sock = socSocket(AF_INET, SOCK_STREAM, 0);
     if(sock < 0)
     {
-        char status[sizeof(g_discord_status)];
-        if(last_svcres != 0)
-        {
-            snprintf(status, sizeof(status),
-                     "Socket failed (soc:U 0x%08lx)", last_svcres);
-        }
-        else if(last_errno != 0)
-        {
-            const char *reason = soc_errno_str(last_errno);
-            snprintf(status, sizeof(status), "Socket failed (%s)",
-                     reason != NULL ? reason : "Unknown error");
-        }
-        else
-        {
-            snprintf(status, sizeof(status), "Socket failed");
-        }
-
-        DiscordLog_Printf("[ERR] Socket creation failed after %lu tries (errno=%d, raw=%d, svc=0x%08lx)\n",
-                          tries, last_errno, last_raw, last_svcres);
-        set_state(DISCORD_ERROR, status);
+        DiscordLog_Printf("[ERR] Socket probe failed\n");
+        set_state(DISCORD_ERROR, "Socket failed");
         return false;
     }
     socClose(sock);
 
     return true;
+}
+
+#define NET_WAIT_FALLBACK_NS (60LL * 1000 * 1000 * 1000)
+
+// Wait until the WiFi is connected
+static bool wait_network_ready(void)
+{
+    if(g_shouldStop || yieldWantsExit())
+        return false;
+
+    if(netWatchIsOnline())
+        return true;
+    else if (!yieldWantsExit())
+    {
+        DiscordLog_Printf("[NET] Kicking AC connection...\n");
+        if(netWatchKick(g_rpc_should_stop_event))
+            return true;
+        DiscordLog_Printf("[NET] Kick failed, waiting for WiFi...\n");
+    }
+
+    set_state(DISCORD_LOGIN, "Waiting WiFi...");
+
+    Handle netEvt = netWatchGetEvent();
+    Handle stopEvt = g_rpc_should_stop_event;
+
+    for(;;)
+    {
+        if(netEvt != 0)
+        {
+            Handle hds[2];
+            s32 nHds = 0;
+            hds[nHds++] = netEvt;
+            if(stopEvt != 0)
+                hds[nHds++] = stopEvt;
+
+            s32 idx = -1;
+            Result res = svcWaitSynchronizationN(&idx, hds, nHds, false,
+                                                 NET_WAIT_FALLBACK_NS);
+            if(R_SUCCEEDED(res))
+            {
+                if(idx == 1)
+                {
+                    // stop requested
+                    DiscordLog_Printf("[THREAD] Network wait aborted\n");
+                    return false;
+                }
+                // idx == 0: AC reported a connection state change
+                svcClearEvent(netEvt);
+            }
+        }
+        else
+        {
+            // Degraded mode (no event available): timed wait, still abortable
+            if(stopEvt != 0)
+            {
+                if(R_SUCCEEDED(svcWaitSynchronization(stopEvt, NET_WAIT_FALLBACK_NS)))
+                {
+                    DiscordLog_Printf("[THREAD] Network wait aborted\n");
+                    return false;
+                }
+            }
+            else
+                svcSleepThread(NET_WAIT_FALLBACK_NS);
+        }
+
+        if(g_shouldStop || yieldWantsExit())
+        {
+            DiscordLog_Printf("[THREAD] Network wait aborted\n");
+            return false;
+        }
+
+        if(netWatchIsOnline())
+            return true;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -341,15 +359,22 @@ void DiscordRPC_ThreadMain(void)
     // thread must exit as soon as it notices (see yieldWantsExit()).
     s_rpcYieldGen = ndmYieldGetGeneration();
     DiscordLog_Printf("[THREAD] Started\n");
+    svcSignalEvent(g_rpcStartedEvent);
+
+    if(!wait_network_ready())
+    {
+        // Stop (or radio lent to a game) before any network use
+        set_state(DISCORD_STOPPED, "Stopped");
+        DiscordLog_Printf("[THREAD] Exited\n");
+        return;
+    }
 
     if(!network_init())
     {
-        svcSignalEvent(g_rpcStartedEvent);
         ndmYieldSafeSocExit();
         return;
     }
 
-    svcSignalEvent(g_rpcStartedEvent);
     DiscordLog_Printf("[THREAD] Network OK, starting login...\n");
 
     char data_mii[MII_OUT_SIZE + 16] = "\0";
@@ -363,13 +388,29 @@ void DiscordRPC_ThreadMain(void)
     bool reconnecting = false;
     for(;;)
     {
+        // Before (re)connecting, make sure the WiFi is actually up.
+        if(!wait_network_ready())
+        {
+            DiscordLog_Printf("[THREAD] Network wait aborted, exiting...\n");
+            active_session = false; // no network: skip the logout below
+            break;
+        }
+
         // --- Login + Verify ---
         SessionResult sres = login_session(data_mii, reconnecting);
         if(sres != SESSION_OK)
         {
-            // Only an actual failure logs an error (voluntary stops are silent)
             if(sres == SESSION_FAILED)
-                DiscordLog_Printf("[THREAD] Error occurred, stopping session\n");
+            {
+                // Network error: wait for the WiFi to come back
+                DiscordLog_Printf("[THREAD] Network error, waiting for reconnect signal\n");
+                CustomRPC_UnmapPage();
+                CustomRPC_ClearConfig();
+                reconnecting = true;
+                continue;
+            }
+            // SESSION_REFUSED: retrying won't help.
+            // SESSION_STOPPED: stop was requested. Voluntary stops are silent.
             break;
         }
         reconnecting = false;
@@ -481,41 +522,6 @@ void DiscordRPC_Stop(bool sleep)
 
     set_state(DISCORD_STOPPED, "Stopped");
     DiscordLog_Printf("[CMD] Stopped\n");
-}
-
-void DiscordRPC_StartWithNetRetry(int maxRetries, u64 retryDelayNs)
-{
-    for(int i = 0; i < maxRetries; i++)
-    {
-        // Reset state
-        LightLock_Lock(&g_discord_lock);
-        if(g_discord_state == DISCORD_ERROR)
-            g_discord_state = DISCORD_STOPPED;
-        LightLock_Unlock(&g_discord_lock);
-
-        DiscordRPC_Start();
-
-        // Only network-level failures (soc/WiFi not ready) are worth
-        // retrying.
-        bool isNetError = false;
-        LightLock_Lock(&g_discord_lock);
-        if(g_discord_state == DISCORD_ERROR)
-        {
-            if(strstr(g_discord_status, "Socket") != NULL ||
-               strstr(g_discord_status, "Network init") != NULL)
-            {
-                isNetError = true;
-            }
-        }
-        LightLock_Unlock(&g_discord_lock);
-
-        if(!isNetError)
-            return;
-
-        DiscordLog_Printf("[CMD] Network not ready, retrying in %llu s (%d/%d)\n",
-                          retryDelayNs / 1000000000ULL, i + 1, maxRetries);
-        svcSleepThread(retryDelayNs);
-    }
 }
 
 void DiscordRPC_Init(void)

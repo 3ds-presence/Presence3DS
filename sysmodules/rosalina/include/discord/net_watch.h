@@ -27,23 +27,15 @@
 #pragma once
 
 #include <3ds/types.h>
-#include <3ds/synchronization.h>
 
-typedef enum {
-    DISCORD_STOPPED = 0,
-    DISCORD_LOGIN,
-    DISCORD_VERIFY,
-    DISCORD_ACTIVE,
-    DISCORD_ERROR,
-} DiscordState;
+// True when the console is connected to a network
+bool netWatchIsOnline(void);
 
-extern volatile DiscordState g_discord_state;
-extern char g_discord_status[64];
-extern LightLock g_discord_lock;
-extern Handle g_rpc_should_stop_event;
+// Kernel event signaled by netWatchNotify().
+Handle netWatchGetEvent(void);
 
-#define PRESENCE3DS_VERSION "v1.3.1"
+// Called by the main thread when the AC 0x300 srv notification is received.
+void netWatchNotify(void);
 
-void DiscordRPC_Init(void);
-void DiscordRPC_Start(void);
-void DiscordRPC_Stop(bool sleep);
+// Kick an AC connection attempt
+bool netWatchKick(Handle cancelEvt);

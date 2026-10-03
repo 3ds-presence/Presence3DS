@@ -93,7 +93,11 @@ static void ndmYieldThreadMain(void)
         if(R_FAILED(svcWaitSynchronization(s_wakeEvent, -1LL)))
             continue;
         svcClearEvent(s_wakeEvent);
-        DiscordRPC_StartWithNetRetry(20, 3LL * 1000 * 1000 * 1000);
+
+        // Wait end of clean before restarting
+        while(g_discord_state != DISCORD_STOPPED)
+            svcSleepThread(100 * 1000 * 1000LL);
+        DiscordRPC_Start();
     }
 }
 

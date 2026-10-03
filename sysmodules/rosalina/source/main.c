@@ -62,6 +62,7 @@
 #include "discord/user_prefs.h"
 #include "discord/discord_session.h"
 #include "discord/ndm_yield.h"
+#include "discord/net_watch.h"
 
 bool isN3DS;
 
@@ -192,14 +193,12 @@ static void handleSleepNotification(u32 notificationId)
 static void discord_rpc_start_task(void *argdata)
 {
     (void)argdata;
-    // ndm:u becomes available when the boot is advanced enough for soc
-    while(!isServiceUsable("ndm:u"))
+    // ndm:u / ac:u become available when the boot is advanced enough for soc
+    while(!isServiceUsable("ndm:u") || !isServiceUsable("ac:u"))
     {
         svcSleepThread(1LL * 1000 * 1000 * 1000); // 1 second
     }
-    // Give WiFi 5 s to connect, then let the shared starter retry
-    svcSleepThread(5LL * 1000 * 1000 * 1000);
-    DiscordRPC_StartWithNetRetry(20, 3LL * 1000 * 1000 * 1000); // ~60 s max retry
+    DiscordRPC_Start();
 }
 
 static void discord_rpc_stop_task(void *argdata)
@@ -300,6 +299,13 @@ static void handleRestartHbAppNotification(u32 notificationId)
 }
 #endif
 
+static void handleNetworkNotification(u32 notificationId)
+{
+    (void)notificationId;
+    // AC 0x300: the connection state changed.
+    netWatchNotify();
+}
+
 static const ServiceManagerServiceEntry services[] = {
     { "plg:ldr", 1, PluginLoader__HandleCommands, true },
     { NULL },
@@ -316,6 +322,7 @@ static const ServiceManagerNotificationEntry notifications[] = {
     { PTMNOTIFID_HALF_AWAKE,        handleSleepNotification                 },
     { 0x213,                        handleShellNotification                 },
     { 0x214,                        handleShellNotification                 },
+    { 0x300,                        handleNetworkNotification               },
     { 0x1000,                       handleNextApplicationDebuggedByForce    },
     { 0x2000,                       handlePreTermNotification               },
     { 0x1001,                       PluginLoader__HandleKernelEvent         },
