@@ -568,6 +568,15 @@ void menuShow(Menu *root)
             Draw_FlushFramebuffer();
             Draw_Unlock();
 
+            Menu *menuBefore = currentMenu;
+            u32 selBefore = selectedItem;
+            u32 visualRank = 0;
+            for(u32 i = 0; i < selBefore; i++)
+            {
+                if(!menuItemIsHidden(&menuBefore->items[i]))
+                    visualRank++;
+            }
+
             switch(currentMenu->items[selectedItem].action_type)
             {
                 case METHOD:
@@ -587,6 +596,36 @@ void menuShow(Menu *root)
 
             if (menuCloseRequested)
                 break;
+
+            if(currentMenu == menuBefore)
+            {
+                numItems = menuCountItems(currentMenu);
+                u32 rank = 0;
+                bool found = false;
+                for(u32 i = 0; i < numItems; i++)
+                {
+                    if(menuItemIsHidden(&currentMenu->items[i]))
+                        continue;
+                    if(rank == visualRank)
+                    {
+                        selectedItem = i;
+                        found = true;
+                        break;
+                    }
+                    rank++;
+                }
+                if(!found)
+                {
+                    for(s32 i = (s32)numItems - 1; i >= 0; i--)
+                    {
+                        if(!menuItemIsHidden(&currentMenu->items[(u32)i]))
+                        {
+                            selectedItem = (u32)i;
+                            break;
+                        }
+                    }
+                }
+            }
 
             Draw_Lock();
             Draw_ClearFramebuffer();

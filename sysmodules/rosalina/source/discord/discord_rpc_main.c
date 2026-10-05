@@ -481,9 +481,12 @@ void DiscordRPC_Start(void)
     if(g_rpc_should_stop_event != 0)
         svcClearEvent(g_rpc_should_stop_event);
 
+    set_state(DISCORD_LOGIN, "Starting...");
+
     if(R_FAILED(svcCreateEvent(&g_rpcStartedEvent, RESET_STICKY)))
     {
         DiscordLog_Printf("[CMD] Event creation failed\n");
+        set_state(DISCORD_STOPPED, "Stopped");
         return;
     }
 
@@ -494,6 +497,7 @@ void DiscordRPC_Start(void)
     {
         DiscordLog_Printf("[CMD] Thread creation failed\n");
         svcCloseHandle(g_rpcStartedEvent);
+        set_state(DISCORD_STOPPED, "Stopped");
         return;
     }
 
