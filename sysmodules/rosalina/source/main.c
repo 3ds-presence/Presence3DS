@@ -198,6 +198,7 @@ static void discord_rpc_start_task(void *argdata)
     {
         svcSleepThread(1LL * 1000 * 1000 * 1000); // 1 second
     }
+    svcSleepThread(1LL * 1000 * 1000 * 1000); // Wait an additional second
     DiscordRPC_Start();
 }
 
