@@ -123,7 +123,6 @@ int resolve_host(const char *host, u32 *ip_out)
         return -1;
     }
 
-    // Copy the first IPv4 address (network byte order, at offset 0x1908)
     *ip_out = *(u32 *)(outbuf + 0x1908);
 
     DiscordLog_Printf("[DNS] Resolved '%s' to %lu.%lu.%lu.%lu\n",
@@ -286,7 +285,7 @@ static int socu_socket_raw(Handle socHandle, int domain, int type, int protocol,
         return 0;
     }
 
-    // Failure: the socket was not created. 
+    // Failure: the socket was not created.
     // Convert the SOCU error code to a POSIX errno.
     if(sock_code < 0)
     {

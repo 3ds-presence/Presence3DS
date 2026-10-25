@@ -69,10 +69,6 @@ static bool yieldWantsExit(void)
     return ndmYieldRpcShouldExit(&s_rpcYieldGen);
 }
 
-// ---------------------------------------------------------------------------
-//  Helpers
-// ---------------------------------------------------------------------------
-
 static void set_state(DiscordState s, const char *st)
 {
     LightLock_Lock(&g_discord_lock);
@@ -182,10 +178,6 @@ static bool wait_network_ready(void)
     }
 }
 
-// ---------------------------------------------------------------------------
-//  Thread main
-// ---------------------------------------------------------------------------
-
 // Result of a login+verify phase (see login_session()).
 typedef enum {
     SESSION_OK,       // logged in and verified
@@ -287,7 +279,7 @@ static ActivityResult run_activity_loop(void)
                     const char *tid_field = strstr(data, "titleid=0000000000000000");
                     if(tid_field)
                     {
-                        data[0] = '\0'; // Clear activity data to hide it
+                        data[0] = '\0';
                     }
                 }
                 ret = discord_activity_update(data);
@@ -450,10 +442,6 @@ void DiscordRPC_ThreadMain(void)
     ndmYieldSafeSocExit();
     DiscordLog_Printf("[THREAD] Exited\n");
 }
-
-// ---------------------------------------------------------------------------
-//  Public API
-// ---------------------------------------------------------------------------
 
 void DiscordRPC_Start(void)
 {

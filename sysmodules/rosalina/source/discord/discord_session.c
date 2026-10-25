@@ -41,10 +41,6 @@
 u64 g_counter = 0;
 bool active_session = false;
 
-// ---------------------------------------------------------------------------
-//  Internal helpers
-// ---------------------------------------------------------------------------
-
 // Decode hex AES key from config into raw bytes
 static void decode_aes_key(u8 key[32])
 {
@@ -86,10 +82,6 @@ static bool ct_equal(const u8 *a, const u8 *b, u32 len)
         diff |= (u8)(a[i] ^ b[i]);
     return diff == 0;
 }
-
-// ---------------------------------------------------------------------------
-//  Public API
-// ---------------------------------------------------------------------------
 
 // Returns 0=OK, 1=refused by server (success=false), 2=network error
 int discord_login(void)

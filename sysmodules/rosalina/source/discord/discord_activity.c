@@ -39,7 +39,6 @@
 #include "pmdbgext.h"
 
 #define SMDH_READ_SIZE  0x36C0
-#define SMDH_NUM_TITLES 0x10
 #define SMDH_NUM_LANGS  12
 #define SMDH_TITLES_OFFSET 0x0008
 #define SMDH_TITLE_ENTRY_SIZE 0x200
@@ -220,7 +219,7 @@ static u64 get_current_app_info(FS_MediaType *outMediaType, u32 *outPid)
     return titleId;
 }
 
-// Fetch CustomRPC script for a title if not already fetched. 
+// Fetch CustomRPC script for a title if not already fetched.
 // "-": no script to fetch
 // Returns 0 on success, non-zero on error.
 static int fetch_script_for_title(u64 tid)

@@ -64,9 +64,6 @@ typedef struct {
     u8          max;   // PREF_INT only: inclusive upper bound
 } UserPrefMeta;
 
-// One entry per preference
-
-// Metadatas of the preferences
 extern const UserPrefMeta g_user_prefs[PREFS_COUNT];
 
 // Values of the preferences (0/1 for PREF_BOOL)

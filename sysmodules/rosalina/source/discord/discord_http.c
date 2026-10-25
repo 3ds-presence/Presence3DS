@@ -91,7 +91,6 @@ int discord_http_post(const char *host, u16 port, const char *path,
         return -1;
     }
 
-    // Create socket
     int sock_err = 0;
     sockfd = soc_socket_ex(AF_INET, SOCK_STREAM, 0, &sock_err, NULL, NULL);
     if(sockfd < 0)
@@ -113,8 +112,6 @@ int discord_http_post(const char *host, u16 port, const char *path,
         goto cleanup;
     }
 
-    // DiscordLog_Printf("[HTTP] Connecting to IP: %s, Port: %u\n", inet_ntoa(addr.sin_addr), port);
-
     // Connect with a 5 s timeout.
     // On timeout/cancel the TCP attempt is abandoned in the background:
     // socClose() in the cleanup below kills it.
@@ -125,7 +122,6 @@ int discord_http_post(const char *host, u16 port, const char *path,
         goto cleanup;
     }
 
-    // Send HTTP headers
     // Commitment point: past this line, the request runs to completion
     // (not cancellable).
     if(send_all(sockfd, req, req_len) != 0)
@@ -187,8 +183,7 @@ int discord_http_post(const char *host, u16 port, const char *path,
         if(total_received > 0)
         {
             response[total_received] = '\0';
-            // DiscordLog_Printf("[HTTP] Response (%u bytes):\n%s\n", total_received, response);
-            ret = 0; // Success, response is in buffer
+            ret = 0;
         }
         else
         {

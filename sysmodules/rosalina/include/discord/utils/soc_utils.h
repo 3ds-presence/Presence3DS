@@ -46,8 +46,7 @@ int soc_connect_timeout(int sockfd, const struct sockaddr *addr, socklen_t addrl
 // Short human-readable description of a POSIX errno
 const char *soc_errno_str(int err);
 
-// Extended version of socSocket(): same socket creation, but the reason of
-// a failure
+// Same as socSocket(), but reports the reason of a failure
 int soc_socket_ex(int domain, int type, int protocol,
                   int *out_errno, int *out_raw, u32 *out_svcres);
 

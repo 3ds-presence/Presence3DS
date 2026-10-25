@@ -302,7 +302,7 @@ void ndmYieldSafeSocExit(void)
     if(bitWasOff && kernelBitIsSet())
     {
         svcKernelSetState(0x10000, 0x10);
-        DiscordLog_Printf("[YIELD] soc released, 0x10 toggle neutralized\n");
+        DiscordLog_Printf("[YIELD] soc released\n");
     }
 
     LightLock_Unlock(&s_lock);

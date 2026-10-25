@@ -29,10 +29,8 @@
 #include <3ds/types.h>
 #include <3ds/services/fs.h>
 
-// One activity loop iteration:
-// - query the current title
-// - fetch the server-side script for it if needed
-// - build the activity string.
+// One activity loop iteration: query the current title, fetch its server-side
+// script if needed, and build the activity string.
 // Returns 0 on success, non-zero when the script fetch failed
 int discord_activity_tick(char *buffer, size_t buffer_size);
 

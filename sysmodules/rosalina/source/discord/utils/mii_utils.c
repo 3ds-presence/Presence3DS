@@ -34,9 +34,6 @@
  * and returns the CFLStoreData without the CRC16 (0x62 bytes - 2 bytes = 96 bytes) as a
  * lowercase hexadecimal string.
  *
- * This hex string can be saved to a binary file on PC and used with:
- *   python mii2studio.py mii.bin output.mnms 3ds
- *
  * Format reference: https://www.3dbrew.org/wiki/Mii#Mii_format
  */
 
@@ -48,13 +45,11 @@ char *mii_get_raw_hex(char *out, size_t out_size)
     if (out == NULL || out_size < MII_OUT_SIZE)
         return NULL;
 
-    // Initialize friend services (force user service, needed for sysmodule context)
+    // Initialize friend services
     res = frdInit(true);
     if (R_FAILED(res))
         return NULL;
 
-    // Get the console's main Mii data
-    // FRD_GetMyMii returns the current user's Mii as a CFLStoreData (FriendMii)
     res = FRD_GetMyMii(&mii);
     if (R_FAILED(res))
     {

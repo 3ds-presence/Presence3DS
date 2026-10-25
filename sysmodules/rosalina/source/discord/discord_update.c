@@ -40,10 +40,6 @@
 
 static volatile bool g_upd_available = false;
 
-// ---------------------------------------------------------------------------
-//  Version parsing / comparison
-// ---------------------------------------------------------------------------
-
 // Parse up to 3 numeric components of a "vX.Y.Z"-style string.
 // Missing components default to 0 ("v1.2" == "1.2.0").
 static void parse_ver_components(const char *s, u32 out[3])
@@ -86,10 +82,6 @@ int DiscordUpdate_CompareVersions(const char *a, const char *b)
 
     return 0;
 }
-
-// ---------------------------------------------------------------------------
-//  .upd file handling
-// ---------------------------------------------------------------------------
 
 // Read the version stored in DISCORD_UPD_PATH. Returns false if the file
 // doesn't exist or can't be read.
@@ -163,10 +155,6 @@ static void upd_delete_file(void)
     if(R_SUCCEEDED(res))
         DiscordLog_Printf("[UPD] Marker removed (update installed)\n");
 }
-
-// ---------------------------------------------------------------------------
-//  Public API
-// ---------------------------------------------------------------------------
 
 void DiscordUpdate_Init(void)
 {

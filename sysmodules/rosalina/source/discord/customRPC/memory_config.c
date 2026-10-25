@@ -32,28 +32,16 @@
 #include "discord/customRPC/read_memory.h"
 #include "discord/discord_log.h"
 
-// ---------------------------------------------------------------------------
-//  Internal structures
-// ---------------------------------------------------------------------------
-
 typedef struct
 {
     u32 address;
     char type; // 'b', 'h', or 'w'
 } AddressEntry;
 
-// ---------------------------------------------------------------------------
-//  Static state (BSS)
-// ---------------------------------------------------------------------------
-
 static AddressEntry g_entries[CUSTOMRPC_MAX_ENTRIES];
 static int g_entry_count;
 static u64 g_loaded_titleid; // 0 = no config loaded for current title
 static bool g_tried;         // true if we already attempted to load for this titleId
-
-// ---------------------------------------------------------------------------
-//  Internal helpers
-// ---------------------------------------------------------------------------
 
 // Parse "AAAAAAAAx" entries (8 hex digits + type b/h/w) separated by ',' or
 // whitespace into g_entries. buf is modified in place.
@@ -76,16 +64,11 @@ static void parse_entries(char *buf)
         if(addr == 0)
             continue;
 
-        // Store valid entry
         g_entries[g_entry_count].address = addr;
         g_entries[g_entry_count].type = type;
         g_entry_count++;
     }
 }
-
-// ---------------------------------------------------------------------------
-//  Public API
-// ---------------------------------------------------------------------------
 
 bool CustomRPC_LoadConfigFromString(u64 titleId, const char *data)
 {
