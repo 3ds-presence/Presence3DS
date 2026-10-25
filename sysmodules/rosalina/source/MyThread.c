@@ -38,9 +38,6 @@ static void _thread_begin(void* arg)
     u32 *tls = (u32 *)getThreadLocalStorage();
     memset(tls, 0, 0x80);
     tls[0] = 0x21545624;
-    // Initialize newlib reent pointer for this thread
-    // (same as initThreadVars does for the main thread)
-    // ThreadVars layout: magic(0), thread_ptr(4), reent(8), tls_tp(12)
     tls[2] = (u32)_impure_ptr;
     // ROSALINA HACKJOB END
 

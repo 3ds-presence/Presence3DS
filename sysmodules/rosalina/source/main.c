@@ -63,6 +63,7 @@
 #include "discord/discord_session.h"
 #include "discord/ndm_yield.h"
 #include "discord/net_watch.h"
+#include "discord/presence_ipc.h"
 
 bool isN3DS;
 
@@ -309,6 +310,7 @@ static void handleNetworkNotification(u32 notificationId)
 
 static const ServiceManagerServiceEntry services[] = {
     { "plg:ldr", 1, PluginLoader__HandleCommands, true },
+    { "p3ds:ver", 2, PresenceIPC__HandleCommands, false },
     { NULL },
 };
 
