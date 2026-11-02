@@ -29,7 +29,7 @@
 // This module yields: it drops OUR ndm state and clears the kext's 0x10
 // block bit so the game gets the state for real; it takes it back on Leave.
 //
-// Handshake with the kext (GetSystemInfo 0x10005 / KernelSetState 0x10008):
+// Handshake with the kext (GetSystemInfo 0x10005 / KernelSetState 0x110001):
 //   bit0: game asks, bit1: we acked (stays set), bit2: real game Leave.
 //   subcommands: 0 ack, 1 reset, 2 refuse.
 // Leave -> wait 3 s, probe ndm, restore when free; watchdog covers games
@@ -135,7 +135,7 @@ static void doRelease(void)
     // bump: tells RPC threads to stop
     s_yieldGeneration++;
 
-    svcKernelSetState(0x10008, 0); // ack: let the game's request pass
+    svcKernelSetState(0x110001, 0); // ack: let the game's request pass
 }
 
 // Ask ndm if the game is done.
@@ -188,7 +188,7 @@ static void doRestore(bool full)
             svcKernelSetState(0x10000, 0x10);
         s_bitCleared = false;
     }
-    svcKernelSetState(0x10008, 1); // reset handshake: all bits back to 0
+    svcKernelSetState(0x110001, 1); // reset handshake: all bits back to 0
 }
 
 void ndmYieldProcess(void)
@@ -206,7 +206,7 @@ void ndmYieldProcess(void)
         if(networkOwnedByOthers())
         {
             // Refuse: gdb / input redirection keep the wifi (kext answers fake success).
-            svcKernelSetState(0x10008, 2);
+            svcKernelSetState(0x110001, 2);
         }
         else
         {

@@ -42,7 +42,7 @@ extern char g_discord_status[64];
 extern LightLock g_discord_lock;
 extern Handle g_rpc_should_stop_event;
 
-#define PRESENCE3DS_VERSION "v1.3.1"
+#define PRESENCE3DS_VERSION "v1.3.2"
 
 void DiscordRPC_Init(void);
 void DiscordRPC_Start(void);

@@ -217,7 +217,7 @@ Result KernelSetStateHook(u32 type, u32 varg1, u32 varg2, u32 varg3)
             cfwInfo.ledMasterBrightnessOverride = (u8)varg1;
             break;
         }
-        case 0x10008: // ndm:u radio yield handshake control
+        case 0x110001: // ndm:u radio yield handshake control
         {
             switch(varg1)
             {
