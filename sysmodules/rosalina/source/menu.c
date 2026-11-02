@@ -479,17 +479,25 @@ static void menuDraw(Menu *menu, u32 selected)
         dispY += SPACING_Y;
     }
 
+    char topRightStr[CALENDAR_TIME_STR_SIZE] = { 0 };
     if(miniSocEnabled)
     {
-        char ipBuffer[17];
         u32 ip = socGethostid();
         u8 *addr = (u8 *)&ip;
-        int n = sprintf(ipBuffer, "%hhu.%hhu.%hhu.%hhu", addr[0], addr[1], addr[2], addr[3]);
-        Draw_DrawString(SCREEN_BOT_WIDTH - 10 - SPACING_X * n, 10, COLOR_WHITE, ipBuffer);
+        sprintf(topRightStr, "%hhu.%hhu.%hhu.%hhu", addr[0], addr[1], addr[2], addr[3]);
+    }
+    else
+    {
+        CalendarTime t;
+        calendarTimeFromMsSince1900(&t, osGetTime());
+        calendarTimeToString(topRightStr, &t);
     }
 
-    else
-        Draw_DrawFormattedString(SCREEN_BOT_WIDTH - 10 - SPACING_X * 15, 10, COLOR_WHITE, "%15s", "");
+    // Also clears what was previously displayed, if it was longer
+    Draw_DrawFormattedString(
+        SCREEN_BOT_WIDTH - 10 - SPACING_X * (CALENDAR_TIME_STR_SIZE - 1), 10, COLOR_WHITE,
+        "%*s", (int)(CALENDAR_TIME_STR_SIZE - 1), topRightStr
+    );
 
     if(mcuInfoRes == 0)
     {
@@ -498,9 +506,16 @@ static void menuDraw(Menu *menu, u32 selected)
         u32 percentageInt = (u32)batteryPercentage;
         u32 percentageFrac = (u32)(batteryPercentage * 10.0f) % 10u;
 
+        // Temperature is an integer amount of degrees Celsius. 9C/5 has a fractional part in {0, 0.2, ..., 0.8},
+        // so adding 2/5 before truncating rounds to nearest (no ties)
+        bool fahrenheit = (lumaMcuConfig.flags & MCUCFG_FLAG_TEMPERATURE_IN_FAHRENHEIT) != 0;
+        int temperature = fahrenheit ? (9 * batteryTemperature + 2) / 5 + 32 : batteryTemperature;
+
+        // Temperature is padded to 3 chars in both units (F >= 32, so at least 2 digits) so that the string length
+        // doesn't change when the unit is toggled or when going above 99F
         char buf[32];
         int n = sprintf(
-            buf, "   %02hhu\xF8""C  %lu.%02luV  %lu.%lu%%", batteryTemperature, // CP437
+            buf, fahrenheit ? "  %3d\xF8""F  %lu.%02luV  %lu.%lu%%" : "   %02d\xF8""C  %lu.%02luV  %lu.%lu%%", temperature, // CP437
             voltageInt, voltageFrac,
             percentageInt, percentageFrac
         );

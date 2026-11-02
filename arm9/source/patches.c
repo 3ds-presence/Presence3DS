@@ -143,7 +143,10 @@ u32 installK11Extension(u8 *pos, u32 size, bool needToInitSd, u32 baseK11VA, u32
             u16 configFormatVersionMajor, configFormatVersionMinor;
             u32 config, multiConfig, bootConfig;
             u32 splashDurationMsec;
-            s8 volumeSliderOverride;
+            u8 mcuConfigFlags;
+            u8 volumeSliderOverride;
+            s8 volumeSliderOverrideStereoBalance;
+            u8 ledMasterBrightnessOverride;
             u64 hbldr3dsxTitleId;
             u32 rosalinaMenuCombo;
             u32 pluginLoaderFlags;
@@ -154,6 +157,7 @@ u32 installK11Extension(u8 *pos, u32 size, bool needToInitSd, u32 baseK11VA, u32
 
             u64 autobootTwlTitleId;
             u8 autobootCtrAppmemtype;
+            bool autobootCtrUseNs;
 
             u16 launchedPath[80+1];
         } info;
@@ -227,7 +231,10 @@ u32 installK11Extension(u8 *pos, u32 size, bool needToInitSd, u32 baseK11VA, u32
     info->multiConfig = configData.multiConfig;
     info->bootConfig = configData.bootConfig;
     info->splashDurationMsec = configData.splashDurationMsec;
+    info->mcuConfigFlags = configData.mcuConfigFlags;
     info->volumeSliderOverride = configData.volumeSliderOverride;
+    info->volumeSliderOverrideStereoBalance = configData.volumeSliderOverrideStereoBalance;
+    info->ledMasterBrightnessOverride = configData.ledMasterBrightnessOverride;
     info->hbldr3dsxTitleId = configData.hbldr3dsxTitleId;
     info->rosalinaMenuCombo = configData.rosalinaMenuCombo;
     info->pluginLoaderFlags = configData.pluginLoaderFlags;
@@ -236,6 +243,7 @@ u32 installK11Extension(u8 *pos, u32 size, bool needToInitSd, u32 baseK11VA, u32
     info->bottomScreenFilter = configData.bottomScreenFilter;
     info->autobootTwlTitleId = configData.autobootTwlTitleId;
     info->autobootCtrAppmemtype = configData.autobootCtrAppmemtype;
+    info->autobootCtrUseNs = configData.autobootCtrUseNs;
     info->versionMajor = VERSION_MAJOR;
     info->versionMinor = VERSION_MINOR;
     info->versionBuild = VERSION_BUILD;

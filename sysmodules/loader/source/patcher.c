@@ -266,7 +266,88 @@ static inline bool findLayeredFsPayloadOffset(u8 *code, u32 size, u32 roSize, u3
     return *payloadOffset != 0 && *pathOffset != 0;
 }
 
-static inline bool applyCodeIpsPatch(u64 progId, u8 *code, u32 size)
+typedef struct PatchFileReader
+{
+    IFile *file;
+    u8 *buf;
+    u32 pos;
+    u32 len;
+    bool eof;
+} PatchFileReader;
+
+// FS reads are slow when the destination isn't 4-byte aligned and when they are small,
+// so buffer the file and only ever issue reads of whole sectors at sector-aligned file offsets
+#define PATCH_SECTOR_SIZE 0x200
+#define PATCH_BUFFER_SIZE (2 * PATCH_SECTOR_SIZE)
+
+static alignas(32) u8 patchFileBuffer[PATCH_BUFFER_SIZE];
+
+static bool patchFileReaderFill(PatchFileReader *reader)
+{
+    u64 total;
+
+    reader->pos = 0;
+    reader->len = 0;
+
+    if(reader->eof || R_FAILED(IFile_Read(reader->file, &total, reader->buf, PATCH_BUFFER_SIZE)))
+        return false;
+
+    reader->len = (u32)total;
+    reader->eof = total != PATCH_BUFFER_SIZE;
+
+    return total != 0;
+}
+
+static bool patchFileRead(void *outData, u32 len, PatchFileReader *reader)
+{
+    u8 *out = (u8 *)outData;
+
+    while(len != 0)
+    {
+        if(reader->pos == reader->len)
+        {
+            // The buffer is drained and the file position is sector-aligned: read large chunks directly when possible
+            if(!reader->eof && len >= PATCH_SECTOR_SIZE && ((u32)out & 3) == 0)
+            {
+                u32 directLen = len & ~(PATCH_SECTOR_SIZE - 1);
+                u64 total;
+
+                if(R_FAILED(IFile_Read(reader->file, &total, out, directLen)) || total != directLen) return false;
+
+                out += directLen;
+                len -= directLen;
+                continue;
+            }
+
+            if(!patchFileReaderFill(reader)) return false;
+        }
+
+        u32 chunk = reader->len - reader->pos;
+        if(chunk > len) chunk = len;
+
+        memcpy(out, reader->buf + reader->pos, chunk);
+        reader->pos += chunk;
+        out += chunk;
+        len -= chunk;
+    }
+
+    return true;
+}
+
+// Make [offset, offset + size) writable. Records past the end grow the file, and the gap
+// they leave is zero-filled like desktop patchers do. Empty records change nothing
+static bool ipsGrowToFit(u8 *code, u32 *patchedSize, u32 maxSize, u32 offset, u32 size)
+{
+    if(offset + size > maxSize) return false;
+    if(size == 0) return true;
+
+    if(offset > *patchedSize) memset(code + *patchedSize, 0, offset - *patchedSize);
+    if(offset + size > *patchedSize) *patchedSize = offset + size;
+
+    return true;
+}
+
+static inline bool applyCodeIpsPatch(u8 *code, u32 *codeSize, u32 maxSize, u64 progId)
 {
     /* Here we look for "/luma/titles/[u64 titleID in hex, uppercase]/code.ips"
        If it exists it should be an IPS format patch */
@@ -290,44 +371,189 @@ static inline bool applyCodeIpsPatch(u64 progId, u8 *code, u32 size)
 
     bool ret = false;
     u8 buffer[5];
-    u64 total;
+    u32 patchedSize = *codeSize;
+    PatchFileReader reader = { .file = &file, .buf = patchFileBuffer, .pos = 0, .len = 0, .eof = false };
 
-    if(R_FAILED(IFile_Read(&file, &total, buffer, 5)) || total != 5 || memcmp(buffer, "PATCH", 5) != 0) goto exit;
+    if(!patchFileRead(buffer, 5, &reader) || memcmp(buffer, "PATCH", 5) != 0) goto exit;
 
-    while(R_SUCCEEDED(IFile_Read(&file, &total, buffer, 3)) && total == 3)
+    while(patchFileRead(buffer, 3, &reader))
     {
         if(memcmp(buffer, "EOF", 3) == 0)
         {
+            // Optional extension: new file size after the EOF marker. Anything else is invalid
+            u32 trailerSize = 0;
+            while(trailerSize < 4 && patchFileRead(buffer + trailerSize, 1, &reader)) trailerSize++;
+
+            if(trailerSize != 0 && trailerSize != 3) break;
+
+            if(trailerSize == 3)
+            {
+                u32 newSize = (buffer[0] << 16) | (buffer[1] << 8) | buffer[2];
+
+                if(newSize > maxSize) break;
+
+                // Zero the cut-off tail, or zerofill up to the new size for consistency with UPS
+                if(newSize < patchedSize) memset(code + newSize, 0, patchedSize - newSize);
+                else memset(code + patchedSize, 0, newSize - patchedSize);
+
+                patchedSize = newSize;
+            }
+
+            *codeSize = patchedSize;
             ret = true;
             break;
         }
 
         u32 offset = (buffer[0] << 16) | (buffer[1] << 8) | buffer[2];
 
-        if(R_FAILED(IFile_Read(&file, &total, buffer, 2)) || total != 2) break;
+        if(!patchFileRead(buffer, 2, &reader)) break;
 
         u32 patchSize = (buffer[0] << 8) | buffer[1];
 
         if(!patchSize)
         {
-            if(R_FAILED(IFile_Read(&file, &total, buffer, 2)) || total != 2) break;
+            if(!patchFileRead(buffer, 3, &reader)) break;
 
             u32 rleSize = (buffer[0] << 8) | buffer[1];
 
-            if(offset + rleSize > size) break;
+            if(!ipsGrowToFit(code, &patchedSize, maxSize, offset, rleSize)) break;
 
-            if(R_FAILED(IFile_Read(&file, &total, buffer, 1)) || total != 1) break;
-
-            for(u32 i = 0; i < rleSize; i++)
-                code[offset + i] = buffer[0];
+            memset(code + offset, buffer[2], rleSize);
 
             continue;
         }
 
-        if(offset + patchSize > size) break;
+        if(!ipsGrowToFit(code, &patchedSize, maxSize, offset, patchSize)) break;
 
-        if(R_FAILED(IFile_Read(&file, &total, code + offset, patchSize)) || total != patchSize) break;
+        if(!patchFileRead(code + offset, patchSize, &reader)) break;
     }
+
+exit:
+    IFile_Close(&file);
+
+    return ret;
+}
+
+// UPS patches end with 3 CRC32s (input, output, patch), which we don't check
+#define UPS_FOOTER_SIZE 12
+
+static bool upsReadByte(u8 *outByte, PatchFileReader *reader, u32 *left)
+{
+    if(*left == 0) return false;
+    --*left;
+
+    if(reader->pos != reader->len)
+    {
+        *outByte = reader->buf[reader->pos++];
+        return true;
+    }
+
+    return patchFileRead(outByte, 1, reader);
+}
+
+static bool upsReadVuint(u32 *outValue, PatchFileReader *reader, u32 *left)
+{
+    u64 result = 0;
+
+    for(u32 shift = 0; shift < 32; shift += 7)
+    {
+        u8 b;
+
+        if(!upsReadByte(&b, reader, left)) return false;
+
+        result += (u64)(b & 0x7F) << shift;
+        if(!(b & 0x80)) result += 1ull << (shift + 7);
+
+        if(result > 0xFFFFFFFF) return false;
+
+        if(b & 0x80)
+        {
+            *outValue = (u32)result;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static inline bool applyCodeUpsPatch(u8 *code, u32 *codeSize, u32 maxSize, u64 progId)
+{
+    /* Here we look for "/luma/titles/[u64 titleID in hex, uppercase]/code.ups"
+       If it exists it should be an UPS format patch */
+
+    bool isSysmodule = (progId >> 32) == 0x00040130;
+    IFile file;
+
+    if (isSysmodule)
+    {
+        char path[] = "/luma/sysmodules/0000000000000000.ups";
+        progId &= ~0xF0000000ull; // clear N3DS bit
+        progIdToStr(path + 32, progId);
+        if(!openLumaFile(&file, path)) return true;
+    }
+    else
+    {
+        char path[] = "/luma/titles/0000000000000000/code.ups";
+        progIdToStr(path + 28, progId);
+        if(!openLumaFile(&file, path)) return true;
+    }
+
+    bool ret = false;
+    u64 fileSize;
+    u8 header[4];
+    u32 left, baseSize, patchedSize, xorSize, offset = 0;
+    PatchFileReader reader = { .file = &file, .buf = patchFileBuffer, .pos = 0, .len = 0, .eof = false };
+
+    if(R_FAILED(IFile_GetSize(&file, &fileSize)) || fileSize < sizeof(header) + UPS_FOOTER_SIZE || fileSize > 0xFFFFFFFF) goto exit;
+
+    // Number of bytes left before the footer
+    left = (u32)fileSize - UPS_FOOTER_SIZE - sizeof(header);
+
+    if(!patchFileRead(header, sizeof(header), &reader) || memcmp(header, "UPS1", 4) != 0) goto exit;
+
+    if(!upsReadVuint(&baseSize, &reader, &left) || !upsReadVuint(&patchedSize, &reader, &left)) goto exit;
+    if(baseSize != *codeSize || patchedSize > maxSize) goto exit;
+
+    // XOR records cover the larger file, bytes past the base size are expected to be zero
+    xorSize = baseSize > patchedSize ? baseSize : patchedSize;
+    if(patchedSize > baseSize) memset(code + baseSize, 0, patchedSize - baseSize);
+
+    while(left != 0)
+    {
+        u32 delta;
+
+        if(!upsReadVuint(&delta, &reader, &left) || delta > xorSize - offset) goto exit;
+
+        offset += delta;
+
+        if(offset == xorSize)
+        {
+            // No more bytes may be modified
+            if(left != 0) goto exit;
+            break;
+        }
+
+        for(;;)
+        {
+            u8 mask;
+
+            if(!upsReadByte(&mask, &reader, &left)) goto exit;
+
+            if(mask == 0)
+            {
+                // The terminator skips one unchanged byte
+                if(offset < xorSize) offset++;
+                break;
+            }
+
+            if(offset >= xorSize) goto exit;
+
+            code[offset++] ^= mask;
+        }
+    }
+
+    *codeSize = patchedSize;
+    ret = true;
 
 exit:
     IFile_Close(&file);
@@ -399,7 +625,7 @@ bool readSysmoduleCxiCode(u8 *outCode, u32 *outSize, u32 maxSize, IFile *file, c
     return R_SUCCEEDED(res) && total == size;
 }
 
-bool loadTitleCodeSection(u64 progId, u8 *code, u32 size)
+bool loadTitleCodeSection(u8 *outCode, u32 *outSize, u32 maxSize, u64 progId)
 {
     /* Here we look for "/luma/titles/[u64 titleID in hex, uppercase]/code.bin"
        If it exists it should be a decrypted and decompressed binary code file */
@@ -413,12 +639,14 @@ bool loadTitleCodeSection(u64 progId, u8 *code, u32 size)
 
     u64 fileSize;
 
-    if(R_FAILED(IFile_GetSize(&file, &fileSize)) || fileSize > size) goto error;
+    if(R_FAILED(IFile_GetSize(&file, &fileSize)) || fileSize > maxSize) goto error;
     else
     {
         u64 total;
 
-        if(R_FAILED(IFile_Read(&file, &total, code, fileSize)) || total != fileSize) goto error;
+        if(R_FAILED(IFile_Read(&file, &total, outCode, fileSize)) || total != fileSize) goto error;
+
+        *outSize = (u32)fileSize;
     }
 
     IFile_Close(&file);
@@ -651,7 +879,7 @@ static inline bool patchLayeredFs(u64 progId, u8 *code, u32 size, u32 textSize, 
     return true;
 }
 
-void patchCode(u64 progId, u16 progVer, u8 *code, u32 size, u32 textSize, u32 roSize, u32 dataSize, u32 roAddress, u32 dataAddress)
+void patchCode(u8 *code, u32 size, u32 codeSize, u64 progId, u16 progVer, u32 textSize, u32 roSize, u32 dataSize, u32 roAddress, u32 dataAddress)
 {
     bool isHomeMenu = progId == 0x0004003000008F02LL || //USA HOME Menu
                       progId == 0x0004003000008202LL || //JPN HOME Menu
@@ -988,16 +1216,18 @@ void patchCode(u64 progId, u16 progVer, u8 *code, u32 size, u32 textSize, u32 ro
 
     if (isSysmodule && CONFIG(LOADEXTFIRMSANDMODULES))
     {
-        if(!patcherApplyCodeBpsPatch(progId, code, size)) goto error;
-        if(!applyCodeIpsPatch(progId, code, size)) goto error;
+        if(!patcherApplyCodeBpsPatch(code, &codeSize, size, progId)) goto error;
+        if(!applyCodeIpsPatch(code, &codeSize, size, progId)) goto error;
+        if(!applyCodeUpsPatch(code, &codeSize, size, progId)) goto error;
     }
 
     if(CONFIG(PATCHGAMES) && !(isApp && nextGamePatchDisabled))
     {
         if (!isSysmodule)
         {
-            if(!patcherApplyCodeBpsPatch(progId, code, size)) goto error;
-            if(!applyCodeIpsPatch(progId, code, size)) goto error;
+            if(!patcherApplyCodeBpsPatch(code, &codeSize, size, progId)) goto error;
+            if(!applyCodeIpsPatch(code, &codeSize, size, progId)) goto error;
+            if(!applyCodeUpsPatch(code, &codeSize, size, progId)) goto error;
         }
 
         if(isApp || isApplet)

@@ -53,6 +53,7 @@
 #include "draw.h"
 #include "bootdiag.h"
 #include "shell.h"
+#include "luma_config.h"
 
 #include "task_runner.h"
 #include "plugin.h"
@@ -344,8 +345,9 @@ int main(void)
     Draw_Init();
     ndmYieldInit();
     Cheat_SeedRng(svcGetSystemTick());
+    LumaConfig_LoadMcuConfig();
     ScreenFiltersMenu_LoadConfig();
-    SysConfigMenu_LoadConfig();
+    MiscellaneousMenu_UpdateTemperatureUnitEntry();
 
     // Initialize Discord RPC (all operations run on TaskRunner, no secondary threads)
     DiscordLog_Init();

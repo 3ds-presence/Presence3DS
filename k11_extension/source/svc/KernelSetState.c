@@ -123,6 +123,7 @@ Result KernelSetStateHook(u32 type, u32 varg1, u32 varg2, u32 varg3)
             __dmb();
 
             hasStartedRosalinaNetworkFuncs = rosalinaState & 0x10;
+            hasStartedRosalinaNetworkFuncs = rosalinaState & 0x10;
 
             // 1: all applet/app/dsp/csnd... threads 2: gsp 4: hid/ir
             for (u32 v = 4; v != 0; v >>= 1)
@@ -208,6 +209,12 @@ Result KernelSetStateHook(u32 type, u32 varg1, u32 varg2, u32 varg3)
                 KProcessHandleTable *table = handleTableOfProcess(currentCoreContext->objectContext.currentProcess);
                 signalPluginEvent = (KEvent *)KProcessHandleTable__ToKAutoObject(table, varg1);
             }
+            break;
+        }
+        case 0x10008:
+        {
+            // Rosalina: LED master brightness override changed
+            cfwInfo.ledMasterBrightnessOverride = (u8)varg1;
             break;
         }
         case 0x10008: // ndm:u radio yield handshake control
